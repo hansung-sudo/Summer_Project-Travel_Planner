@@ -1,0 +1,78 @@
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Planner {
+  id           String        @id @default(uuid())
+  title        String
+  share_code   String        @unique
+  is_deleted   Boolean       @default(false)
+  deleted_at   DateTime?
+  created_at   DateTime      @default(now())
+  
+  participants Participant[]
+  days         Day[]
+  messages     Message[]
+
+  @@map("planners")
+}
+
+model Participant {
+  id            String    @id @default(uuid())
+  planner_id    String
+  name          String
+  password_hash String
+  role          String    // "owner" or "member"
+  joined_at     DateTime  @default(now())
+
+  planner       Planner   @relation(fields: [planner_id], references: [id], onDelete: Cascade)
+  messages      Message[]
+
+  @@map("participants")
+}
+
+model Day {
+  id         String     @id @default(uuid())
+  planner_id String
+  day_number Int
+  label      String
+
+  planner    Planner    @relation(fields: [planner_id], references: [id], onDelete: Cascade)
+  schedules  Schedule[]
+
+  @@map("days")
+}
+
+model Schedule {
+  id         String   @id @default(uuid())
+  day_id     String
+  start_time String   // "09:00"
+  end_time   String   // "11:00"
+  place_name String
+  place_lat  Float
+  place_lng  Float
+  content    String?  @db.Text
+  created_by String?
+
+  day        Day      @relation(fields: [day_id], references: [id], onDelete: Cascade)
+
+  @@map("schedules")
+}
+
+model Message {
+  id             String      @id @default(uuid())
+  planner_id     String
+  participant_id String
+  content        String      @db.Text
+  created_at     DateTime    @default(now())
+
+  planner        Planner     @relation(fields: [planner_id], references: [id], onDelete: Cascade)
+  participant    Participant @relation(fields: [participant_id], references: [id], onDelete: Cascade)
+
+  @@map("messages")
+}
