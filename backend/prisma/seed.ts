@@ -84,6 +84,19 @@ async function main() {
     },
   });
 
+  await prisma.schedule.create({
+  data: {
+    day_id: day2.id,
+    start_time: "13:00",
+    end_time: "15:00",
+    place_name: "협재 해수욕장",
+    place_lat: 33.3945000,
+    place_lng: 126.2420000,
+    content: "해수욕 및 서핑",
+    created_by: member.id, // 철수가 작성
+  },
+});
+
   // 6. Message 생성
   await prisma.message.create({
     data: {
