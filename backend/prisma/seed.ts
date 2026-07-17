@@ -3,6 +3,11 @@ import { PrismaClient, Role } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+// db TIME 타입 매핑을 위한 Date 객체 생성 함수
+function createTime(hours: number, minutes: number): Date {
+  return new Date(Date.UTC(1970, 0, 1, hours, minutes, 0));
+}
+
 async function main() {
   console.log('더미 데이터 삽입 시작...');
 
@@ -61,8 +66,8 @@ async function main() {
   await prisma.schedule.create({
     data: {
       day_id: day1.id,
-      start_time: '09:00',
-      end_time: '11:30',
+      start_time: createTime(9, 0),   // 09:00
+      end_time: createTime(11, 30),   // 11:30
       place_name: '성산일출봉',
       place_lat: 33.4586000,
       place_lng: 126.9426000,
@@ -74,8 +79,8 @@ async function main() {
   await prisma.schedule.create({
     data: {
       day_id: day1.id,
-      start_time: '23:00',
-      end_time: '08:00',
+      start_time: createTime(23, 0),  
+      end_time: createTime(8, 0),     
       place_name: null, // 장소 지정 안 한 일정
       place_lat: null,
       place_lng: null,
@@ -87,8 +92,8 @@ async function main() {
   await prisma.schedule.create({
   data: {
     day_id: day2.id,
-    start_time: "13:00",
-    end_time: "15:00",
+    start_time: createTime(13, 0),
+    end_time: createTime(15, 0),
     place_name: "협재 해수욕장",
     place_lat: 33.3945000,
     place_lng: 126.2420000,
