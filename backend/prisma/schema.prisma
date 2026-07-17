@@ -1,10 +1,15 @@
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
 generator client {
   provider = "prisma-client-js"
 }
 
-datasource db {
-  provider = "mysql"
-  url      = env("DATABASE_URL")
+enum Role {
+  owner
+  member
 }
 
 model Planner {
@@ -14,6 +19,7 @@ model Planner {
   is_deleted   Boolean       @default(false)
   deleted_at   DateTime?
   created_at   DateTime      @default(now())
+
   days         Day[]
   messages     Message[]
   participants Participant[]
@@ -28,6 +34,7 @@ model Participant {
   password_hash String     @db.VarChar(255)
   role          Role       @default(member)
   joined_at     DateTime   @default(now())
+
   messages      Message[]
   planner       Planner    @relation(fields: [planner_id], references: [id], onDelete: Cascade)
   schedules     Schedule[]
@@ -41,11 +48,11 @@ model Day {
   planner_id String
   day_number Int
   label      String     @db.VarChar(20)
+
   planner    Planner    @relation(fields: [planner_id], references: [id], onDelete: Cascade)
   schedules  Schedule[]
 
   @@unique([planner_id, day_number])
-  @@index([planner_id], map: "Day_planner_id_fkey")
   @@map("Day")
 }
 
@@ -61,8 +68,9 @@ model Schedule {
   created_by String
   created_at DateTime    @default(now())
   updated_at DateTime    @updatedAt
-  author     Participant @relation(fields: [created_by], references: [id])
+
   day        Day         @relation(fields: [day_id], references: [id], onDelete: Cascade)
+  author     Participant @relation(fields: [created_by], references: [id])
 
   @@index([created_by], map: "Schedule_created_by_fkey")
   @@index([day_id], map: "Schedule_day_id_fkey")
@@ -75,15 +83,11 @@ model Message {
   participant_id String
   content        String      @db.VarChar(500)
   created_at     DateTime    @default(now())
+  
   participant    Participant @relation(fields: [participant_id], references: [id], onDelete: Cascade)
   planner        Planner     @relation(fields: [planner_id], references: [id], onDelete: Cascade)
 
   @@index([participant_id], map: "Message_participant_id_fkey")
   @@index([planner_id], map: "Message_planner_id_fkey")
   @@map("Message")
-}
-
-enum Role {
-  owner
-  member
 }
