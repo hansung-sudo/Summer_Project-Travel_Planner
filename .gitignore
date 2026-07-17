@@ -1,0 +1,29 @@
+# 1. Dependencies 
+node_modules/
+**/node_modules/ 
+
+# 2. Build outputs
+dist/
+build/
+*.tsbuildinfo
+
+# 3. Environment variables 
+**/.env         
+**/.env.*
+!.env.example
+!**/.env.example
+
+# 4. Logs / OS / Editor Files 
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# 5. DB / Cache / Temp
+backend/prisma/dev.db
+backend/prisma/dev.db-journal
+coverage/
+.cache/
+tmp/
+temp/
