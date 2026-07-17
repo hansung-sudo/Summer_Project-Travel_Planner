@@ -10,7 +10,9 @@ interface TimeSlotModalProps {
   onClose: () => void;
 }
 
-
+const HOURS = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
+const END_HOURS = Array.from({ length: 25 }, (_, i) => i.toString().padStart(2, '0')); // 00 to 24
+const MINUTES = Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0'));
 
 export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({ 
   schedule, 
@@ -22,6 +24,12 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
   
   const [startTime, setStartTime] = useState('09:00');
   const [endTime, setEndTime] = useState('11:00');
+  
+  const [startHour, setStartHour] = useState('09');
+  const [startMin, setStartMin] = useState('00');
+  const [endHour, setEndHour] = useState('11');
+  const [endMin, setEndMin] = useState('00');
+  
   const [placeName, setPlaceName] = useState('');
   const [placeLat, setPlaceLat] = useState<number | undefined>(undefined);
   const [placeLng, setPlaceLng] = useState<number | undefined>(undefined);
@@ -29,16 +37,39 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
 
   // Synchronize component state with props
   useEffect(() => {
+    let sh = '09';
+    let sm = '00';
+    let eh = '11';
+    let em = '00';
+
     if (schedule) {
-      setStartTime(schedule.startTime);
-      setEndTime(schedule.endTime);
+      [sh, sm] = schedule.startTime.split(':');
+      [eh, em] = schedule.endTime.split(':');
+    } else {
+      if (defaultStartTime) [sh, sm] = defaultStartTime.split(':');
+      if (defaultEndTime) [eh, em] = defaultEndTime.split(':');
+    }
+
+    // Treat 00:00 end time as 24:00 if start is after midnight
+    if (eh === '00' && em === '00' && (Number(sh) > 0 || Number(sm) > 0)) {
+      eh = '24';
+      em = '00';
+    }
+
+    setStartHour(sh);
+    setStartMin(sm);
+    setEndHour(eh);
+    setEndMin(em);
+
+    setStartTime(`${sh}:${sm}`);
+    setEndTime(eh === '24' ? '00:00' : `${eh}:${em}`);
+    
+    if (schedule) {
       setPlaceName(schedule.placeName || '');
       setPlaceLat(schedule.placeLat);
       setPlaceLng(schedule.placeLng);
       setContent(schedule.content || '');
     } else {
-      setStartTime(defaultStartTime || '09:00');
-      setEndTime(defaultEndTime || '11:00');
       setPlaceName('');
       setPlaceLat(undefined);
       setPlaceLng(undefined);
@@ -64,14 +95,16 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (startTime >= endTime && endTime !== '00:00') {
+    const finalEndTime = endHour === '24' ? '00:00' : `${endHour}:${endMin}`;
+
+    if (startTime >= finalEndTime && finalEndTime !== '00:00') {
       alert('종료 시간은 시작 시간보다 늦어야 합니다.');
       return;
     }
 
     const data = {
       startTime,
-      endTime,
+      endTime: finalEndTime,
       placeName: placeName.trim() || undefined,
       placeLat,
       placeLng,
@@ -96,14 +129,12 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
     }
   };
 
-
-
   return (
     <div style={overlayStyle}>
       <div className="glass-panel" style={modalStyle}>
         <div style={headerStyle}>
           <h3 style={titleStyle}>
-            {schedule ? '📌 일정 수정하기' : '✨ 새 일정 추가'}
+            {schedule ? '📌 일정 수정하기' : '새 일정 추가'}
           </h3>
           <button onClick={onClose} style={closeBtnStyle}>
             <X size={18} />
@@ -114,25 +145,72 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
           <div style={rowStyle}>
             <div style={colStyle}>
               <label style={labelStyle}>시작 시간</label>
-              <input
-                type="time"
-                className="glass-input"
-                style={inputStyle}
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-                required
-              />
+              <div style={timePickerWrapperStyle}>
+                <select
+                  className="glass-input"
+                  style={timeSelectStyle}
+                  value={startHour}
+                  onChange={(e) => {
+                    setStartHour(e.target.value);
+                    setStartTime(`${e.target.value}:${startMin}`);
+                  }}
+                >
+                  {HOURS.map(h => (
+                    <option key={h} value={h}>{h}시</option>
+                  ))}
+                </select>
+                <select
+                  className="glass-input"
+                  style={timeSelectStyle}
+                  value={startMin}
+                  onChange={(e) => {
+                    setStartMin(e.target.value);
+                    setStartTime(`${startHour}:${e.target.value}`);
+                  }}
+                >
+                  {MINUTES.map(m => (
+                    <option key={m} value={m}>{m}분</option>
+                  ))}
+                </select>
+              </div>
             </div>
             <div style={colStyle}>
               <label style={labelStyle}>종료 시간</label>
-              <input
-                type="time"
-                className="glass-input"
-                style={inputStyle}
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-                required
-              />
+              <div style={timePickerWrapperStyle}>
+                <select
+                  className="glass-input"
+                  style={timeSelectStyle}
+                  value={endHour}
+                  onChange={(e) => {
+                    const newHour = e.target.value;
+                    setEndHour(newHour);
+                    if (newHour === '24') {
+                      setEndMin('00');
+                      setEndTime('00:00');
+                    } else {
+                      setEndTime(`${newHour}:${endMin}`);
+                    }
+                  }}
+                >
+                  {END_HOURS.map(h => (
+                    <option key={h} value={h}>{h}시</option>
+                  ))}
+                </select>
+                <select
+                  className="glass-input"
+                  style={timeSelectStyle}
+                  value={endMin}
+                  disabled={endHour === '24'}
+                  onChange={(e) => {
+                    setEndMin(e.target.value);
+                    setEndTime(`${endHour}:${e.target.value}`);
+                  }}
+                >
+                  {MINUTES.map(m => (
+                    <option key={m} value={m}>{m}분</option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
 
@@ -155,8 +233,6 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
               )}
             </div>
           </div>
-
-
 
           <div style={inputGroupStyle}>
             <label style={labelStyle}>일정 메모</label>
@@ -219,29 +295,36 @@ const modalStyle: React.CSSProperties = {
   padding: '24px',
   backgroundColor: '#ffffff',
   border: '3px solid #0f172a',
-  borderRadius: '8px',
+  borderRadius: '16px',
   boxShadow: '6px 6px 0px #0f172a',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '16px',
 };
 
 const headerStyle: React.CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
-  marginBottom: '20px',
+  borderBottom: '3px solid #0f172a',
+  paddingBottom: '12px',
 };
 
 const titleStyle: React.CSSProperties = {
-  fontSize: '1.15rem',
-  fontWeight: 600,
+  fontSize: '1.1rem',
+  fontWeight: 700,
   color: '#0f172a',
 };
 
 const closeBtnStyle: React.CSSProperties = {
   background: 'none',
   border: 'none',
-  color: '#64748b',
+  color: '#0f172a',
   cursor: 'pointer',
   padding: '4px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
 };
 
 const formStyle: React.CSSProperties = {
@@ -252,7 +335,7 @@ const formStyle: React.CSSProperties = {
 
 const rowStyle: React.CSSProperties = {
   display: 'flex',
-  gap: '12px',
+  gap: '16px',
 };
 
 const colStyle: React.CSSProperties = {
@@ -262,33 +345,50 @@ const colStyle: React.CSSProperties = {
   gap: '6px',
 };
 
-const inputGroupStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '6px',
-};
-
 const labelStyle: React.CSSProperties = {
   fontSize: '0.8rem',
-  fontWeight: 500,
-  color: '#475569',
+  fontWeight: 700,
+  color: '#0f172a',
 };
 
 const inputStyle: React.CSSProperties = {
+  width: '100%',
   backgroundColor: '#ffffff',
   border: '3px solid #0f172a',
   borderRadius: '8px',
   boxShadow: '2px 2px 0px #0f172a',
   padding: '10px 12px',
+  fontSize: '0.9rem',
   color: '#0f172a',
-  fontWeight: 500,
+  fontWeight: 600,
   outline: 'none',
+};
+
+const timePickerWrapperStyle: React.CSSProperties = {
+  display: 'flex',
+  gap: '8px',
+  width: '100%',
+};
+
+const timeSelectStyle: React.CSSProperties = {
+  flex: 1,
+  backgroundColor: '#ffffff',
+  border: '3px solid #0f172a',
+  borderRadius: '8px',
+  boxShadow: '2px 2px 0px #0f172a',
+  padding: '10px 12px',
+  fontSize: '0.9rem',
+  color: '#0f172a',
+  fontWeight: 600,
+  outline: 'none',
+  cursor: 'pointer',
 };
 
 const placeInputWrapperStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: '8px',
+  position: 'relative',
 };
 
 const coordBadgeStyle: React.CSSProperties = {
@@ -297,7 +397,7 @@ const coordBadgeStyle: React.CSSProperties = {
   gap: '4px',
   fontSize: '0.7rem',
   color: '#10b981',
-  backgroundColor: 'rgba(16, 185, 129, 0.08)',
+  backgroundColor: '#ecfdf5',
   border: '1px solid rgba(16, 185, 129, 0.2)',
   padding: '8px 10px',
   borderRadius: '8px',
@@ -315,8 +415,6 @@ const textareaStyle: React.CSSProperties = {
   fontWeight: 500,
   outline: 'none',
 };
-
-
 
 const actionRowStyle: React.CSSProperties = {
   display: 'flex',
@@ -339,4 +437,10 @@ const deleteBtnStyleFull: React.CSSProperties = {
 const saveBtnStyle: React.CSSProperties = {
   padding: '10px 20px',
   fontSize: '0.85rem',
+};
+
+const inputGroupStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '6px',
 };

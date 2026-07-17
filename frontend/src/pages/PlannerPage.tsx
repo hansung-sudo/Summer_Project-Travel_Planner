@@ -695,9 +695,6 @@ const timelineListStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   gap: '8px',
-  maxHeight: '280px',
-  overflowY: 'auto',
-  paddingRight: '4px',
 };
 
 const timelineItemStyle: React.CSSProperties = {
