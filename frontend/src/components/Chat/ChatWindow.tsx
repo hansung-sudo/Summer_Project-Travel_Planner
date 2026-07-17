@@ -8,10 +8,7 @@ export const ChatWindow: React.FC = () => {
     messages, 
     participants, 
     currentUser, 
-    sendMessage, 
-    simulationActive, 
-    startSimulation, 
-    stopSimulation 
+    sendMessage 
   } = usePlannerStore();
 
   const [input, setInput] = useState('');
@@ -21,6 +18,7 @@ export const ChatWindow: React.FC = () => {
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0 });
+  const mouseDownPos = useRef({ x: 0, y: 0 });
   const windowRef = useRef<HTMLDivElement>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -43,6 +41,10 @@ export const ChatWindow: React.FC = () => {
       x: e.clientX - position.x,
       y: e.clientY - position.y
     };
+    mouseDownPos.current = {
+      x: e.clientX,
+      y: e.clientY
+    };
     e.preventDefault();
   };
 
@@ -56,8 +58,19 @@ export const ChatWindow: React.FC = () => {
       setPosition({ x: newX, y: newY });
     };
 
-    const handleMouseUp = () => {
+    const handleMouseUp = (e: MouseEvent) => {
       setIsDragging(false);
+      
+      // Calculate distance moved
+      const dist = Math.sqrt(
+        Math.pow(e.clientX - mouseDownPos.current.x, 2) +
+        Math.pow(e.clientY - mouseDownPos.current.y, 2)
+      );
+      
+      // If we just clicked (moved less than 5px) while minimized, maximize the window
+      if (isMinimized && dist < 5) {
+        setIsMinimized(false);
+      }
     };
 
     if (isDragging) {
@@ -69,7 +82,7 @@ export const ChatWindow: React.FC = () => {
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging]);
+  }, [isDragging, isMinimized]);
 
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,13 +91,7 @@ export const ChatWindow: React.FC = () => {
     setInput('');
   };
 
-  const toggleSimulation = () => {
-    if (simulationActive) {
-      stopSimulation();
-    } else {
-      startSimulation();
-    }
-  };
+
 
   // Base position offset (starts near bottom-right)
   const windowStyle: React.CSSProperties = {
@@ -111,16 +118,15 @@ export const ChatWindow: React.FC = () => {
         style={{
           ...windowStyle,
           width: 'auto',
-          cursor: 'pointer',
+          cursor: isDragging ? 'grabbing' : 'grab',
           borderRadius: '30px',
           padding: '10px 18px',
         }}
-        onClick={() => setIsMinimized(false)}
+        onMouseDown={handleMouseDown}
       >
         <div style={minimizedHeaderStyle}>
           <MessageSquare size={16} style={{ color: '#6366f1' }} />
           <span style={minimizedTitleStyle}>채팅창 ({messages.filter(m => m.participantId !== 'system').length})</span>
-          {simulationActive && <span style={simBadgeStyle}>Live</span>}
         </div>
       </div>
     );
@@ -143,23 +149,9 @@ export const ChatWindow: React.FC = () => {
         <MessageSquare size={16} style={{ color: '#94a3b8' }} />
         <span style={headerTitleStyle}>실시간 채팅</span>
         
-        {/* Simulation toggle */}
-        <button 
-          onClick={toggleSimulation} 
-          style={{
-            ...simToggleStyle,
-            borderColor: simulationActive ? '#10b981' : 'rgba(255,255,255,0.1)',
-            color: simulationActive ? '#10b981' : '#64748b'
-          }}
-          title="실시간 협업 가상 시뮬레이션 토글"
-        >
-          <Users size={12} />
-          {simulationActive ? '시뮬레이션 중' : '시뮬레이터'}
-        </button>
-
         <button 
           onClick={() => setIsMinimized(true)} 
-          style={minimizeBtnStyle}
+          style={{ ...minimizeBtnStyle, marginLeft: 'auto' }}
         >
           <Minimize2 size={14} />
         </button>
@@ -218,13 +210,7 @@ const minimizedTitleStyle: React.CSSProperties = {
   color: '#0f172a',
 };
 
-const simBadgeStyle: React.CSSProperties = {
-  width: '6px',
-  height: '6px',
-  borderRadius: '50%',
-  backgroundColor: '#10b981',
-  boxShadow: '0 0 8px #10b981',
-};
+
 
 const headerStyle: React.CSSProperties = {
   padding: '12px 14px',
@@ -242,19 +228,7 @@ const headerTitleStyle: React.CSSProperties = {
   color: '#0f172a',
 };
 
-const simToggleStyle: React.CSSProperties = {
-  marginLeft: 'auto',
-  background: 'none',
-  border: '1px solid',
-  borderRadius: '4px',
-  padding: '2px 6px',
-  fontSize: '0.65rem',
-  display: 'flex',
-  alignItems: 'center',
-  gap: '4px',
-  cursor: 'pointer',
-  transition: 'all 0.15s ease',
-};
+
 
 const minimizeBtnStyle: React.CSSProperties = {
   background: 'none',

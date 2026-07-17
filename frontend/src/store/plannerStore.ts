@@ -10,7 +10,6 @@ interface PlannerState {
   messages: Message[];
   activeDayId: string | null;
   showGridLines: boolean;
-  simulationActive: boolean;
   
   // Actions
   createPlanner: (title: string) => string;
@@ -24,9 +23,7 @@ interface PlannerState {
   deletePlanner: () => void;
   sendMessage: (content: string) => void;
   toggleGridLines: () => void;
-  startSimulation: () => void;
-  stopSimulation: () => void;
-  receiveSimulatedMessage: (name: string, text: string) => void;
+
 }
 
 // Predefined soft colors for participants
@@ -76,7 +73,7 @@ const saveStoredPlanner = (
   }
 };
 
-let simulationInterval: number | null = null;
+
 
 export const usePlannerStore = create<PlannerState>((set, get) => ({
   planner: null,
@@ -87,7 +84,6 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
   messages: [],
   activeDayId: null,
   showGridLines: true,
-  simulationActive: false,
 
   createPlanner: (title: string) => {
     const shareCode = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -138,7 +134,6 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
       schedules: [],
       messages: plannerData.messages,
       activeDayId: firstDayId,
-      simulationActive: false
     });
 
     return shareCode;
@@ -334,7 +329,6 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
         isDeleted: true,
       },
       currentUser: null,
-      simulationActive: false
     });
   },
 
@@ -366,164 +360,5 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
 
   toggleGridLines: () => {
     set(state => ({ showGridLines: !state.showGridLines }));
-  },
-
-  startSimulation: () => {
-    const { simulationActive, planner } = get();
-    if (simulationActive || !planner) return;
-
-    set({ simulationActive: true });
-
-    // Define simulated team members
-    const mockMembers = [
-      { name: '김민수', color: '#0d9488' },
-      { name: '이지원', color: '#d97706' },
-      { name: '박태현', color: '#db2777' }
-    ];
-
-    const mockLocations = [
-      { name: '성산일출봉', lat: 33.4586000, lng: 126.9426000, content: '일출 구경 & 하이킹' },
-      { name: '협재해수욕장', lat: 33.3938000, lng: 126.2396000, content: '모래사장 산책 및 카페 방문' },
-      { name: '한라산 국립공원', lat: 33.3617000, lng: 126.5292000, content: '등산 준비!' },
-      { name: '동문시장', lat: 33.5126000, lng: 126.5284000, content: '야시장에서 길거리 음식 먹기' },
-      { name: '오설록 티뮤지엄', lat: 33.3059000, lng: 126.2894000, content: '녹차 아이스크림 시식' }
-    ];
-
-    const mockChats = [
-      '일정 대충 짰는데 어때요?',
-      '원형 시간표 보니까 14시쯤 비어있던데 동문시장 갈까요?',
-      '성산일출봉 가려면 아침 일찍 가야 해요! 07시로 수정해볼게요.',
-      '협재 바다 진짜 예쁘겠다 ㅠㅠ',
-      '전 2일차 아침에 늦잠 자고 싶어요 ㅋㅋㅋ',
-      '시간표 눈금 보니까 일정 겹치는 거 경고 뜨네요!',
-      '오설록 티뮤지엄 근처 맛집 아시는 분?',
-    ];
-
-    let step = 0;
-    simulationInterval = window.setInterval(() => {
-      const { planner: currentPlanner, participants, activeDayId } = get();
-      if (!currentPlanner || currentPlanner.isDeleted) {
-        if (simulationInterval) clearInterval(simulationInterval);
-        return;
-      }
-
-      // Add a simulated participant if not already in participants list (up to 3)
-      const currentSimulated = participants.filter(p => mockMembers.some(m => m.name === p.name));
-      if (currentSimulated.length < mockMembers.length && Math.random() < 0.3) {
-        const nextToJoin = mockMembers[currentSimulated.length];
-        const newPart: Participant = {
-          id: `sim-${nextToJoin.name}`,
-          plannerId: currentPlanner.id,
-          name: nextToJoin.name,
-          role: 'member',
-          color: nextToJoin.color,
-          joinedAt: new Date().toISOString()
-        };
-        
-        set({
-          participants: [...participants, newPart],
-          messages: [
-            ...get().messages,
-            {
-              id: Math.random().toString(36).substring(2, 10),
-              plannerId: currentPlanner.id,
-              participantId: 'system',
-              participantName: 'TripSync 🧭',
-              content: `👋 ${nextToJoin.name}님이 플래너에 참여하셨습니다. (멤버)`,
-              createdAt: new Date().toISOString()
-            }
-          ]
-        });
-        return;
-      }
-
-      // Perform a random action: send a message or add a schedule
-      if (participants.length > 1) {
-        const randomMember = participants.find(p => p.id.startsWith('sim-'));
-        if (!randomMember) return;
-
-        const actionRoll = Math.random();
-        if (actionRoll < 0.6) {
-          // Chat action
-          const chatText = mockChats[step % mockChats.length];
-          step++;
-          
-          set({
-            messages: [
-              ...get().messages,
-              {
-                id: Math.random().toString(36).substring(2, 10),
-                plannerId: currentPlanner.id,
-                participantId: randomMember.id,
-                participantName: randomMember.name,
-                content: chatText,
-                createdAt: new Date().toISOString()
-              }
-            ]
-          });
-        } else if (actionRoll < 0.9 && activeDayId) {
-          // Schedule action: Try to find a free slot or add a schedule
-          const randomLoc = mockLocations[Math.floor(Math.random() * mockLocations.length)];
-          // Find currently taken schedules for this day to avoid overlapping, or just pick a random time
-          const startH = 10 + Math.floor(Math.random() * 8); // 10:00 to 18:00
-          const duration = 1 + Math.floor(Math.random() * 2); // 1 to 2 hours
-          const startStr = `${startH.toString().padStart(2, '0')}:00`;
-          const endStr = `${(startH + duration).toString().padStart(2, '0')}:00`;
-
-          const newSched: Schedule = {
-            id: Math.random().toString(36).substring(2, 10),
-            dayId: activeDayId,
-            startTime: startStr,
-            endTime: endStr,
-            placeName: randomLoc.name,
-            placeLat: randomLoc.lat,
-            placeLng: randomLoc.lng,
-            content: randomLoc.content,
-            createdBy: randomMember.id,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          };
-
-          set({
-            schedules: [...get().schedules, newSched],
-            messages: [
-              ...get().messages,
-              {
-                id: Math.random().toString(36).substring(2, 10),
-                plannerId: currentPlanner.id,
-                participantId: 'system',
-                participantName: 'TripSync 🧭',
-                content: `📌 ${randomMember.name}님이 [${randomLoc.name}] 일정을 추가했습니다. (${startStr} ~ ${endStr})`,
-                createdAt: new Date().toISOString()
-              }
-            ]
-          });
-        }
-      }
-    }, 8000); // Trigger action every 8 seconds
-  },
-
-  stopSimulation: () => {
-    if (simulationInterval) {
-      clearInterval(simulationInterval);
-      simulationInterval = null;
-    }
-    set({ simulationActive: false });
-  },
-
-  receiveSimulatedMessage: (name, text) => {
-    const { planner, messages } = get();
-    if (!planner) return;
-    
-    const newMsg: Message = {
-      id: Math.random().toString(36).substring(2, 10),
-      plannerId: planner.id,
-      participantId: 'system-agent',
-      participantName: name,
-      content: text,
-      createdAt: new Date().toISOString()
-    };
-    
-    set({ messages: [...messages, newMsg] });
   }
 }));
