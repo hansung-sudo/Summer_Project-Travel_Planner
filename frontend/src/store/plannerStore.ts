@@ -10,7 +10,7 @@ interface PlannerState {
   messages: Message[];
   activeDayId: string | null;
   showGridLines: boolean;
-  
+
   // Actions
   createPlanner: (title: string) => string;
   loadPlanner: (shareCode: string) => boolean;
@@ -55,7 +55,7 @@ const getStoredPlanners = (): Record<string, {
 };
 
 const saveStoredPlanner = (
-  shareCode: string, 
+  shareCode: string,
   data: {
     planner: Planner;
     participants: Participant[];
@@ -88,7 +88,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
   createPlanner: (title: string) => {
     const shareCode = Math.random().toString(36).substring(2, 8).toUpperCase();
     const plannerId = Math.random().toString(36).substring(2, 10);
-    
+
     const newPlanner: Planner = {
       id: plannerId,
       title,
@@ -171,7 +171,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
 
     const assignedRole = role || (participants.length === 0 ? 'owner' : 'member');
     const color = PARTICIPANT_COLORS[participants.length % PARTICIPANT_COLORS.length];
-    
+
     const newParticipant: Participant = {
       id: Math.random().toString(36).substring(2, 10),
       plannerId: planner.id,
@@ -182,7 +182,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
     };
 
     const updatedParticipants = [...participants, newParticipant];
-    
+
     const updatedMessages = [
       ...get().messages,
       {
@@ -231,7 +231,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
     };
 
     const updatedDays = [...days, newDay];
-    
+
     set({
       days: updatedDays,
       activeDayId: get().activeDayId || newDay.id
@@ -278,7 +278,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
     const { planner, schedules } = get();
     if (!planner) return;
 
-    const updatedSchedules = schedules.map(s => 
+    const updatedSchedules = schedules.map(s =>
       s.id === updated.id ? { ...updated, updatedAt: new Date().toISOString() } : s
     );
 
