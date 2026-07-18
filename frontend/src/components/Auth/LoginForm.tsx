@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { usePlannerStore } from '../../store/plannerStore';
-import { LogIn } from 'lucide-react';
+import { LogIn, Eye } from 'lucide-react';
 
 interface LoginFormProps {
   onClose?: () => void;
@@ -13,6 +13,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onClose }) => {
   const [error, setError] = useState('');
   
   const [isPrimaryHovered, setIsPrimaryHovered] = useState(false);
+  const [isSecondaryHovered, setIsSecondaryHovered] = useState(false);
 
   const isFirstParticipant = participants.length === 0;
 
@@ -74,8 +75,6 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onClose }) => {
             />
           </div>
 
-
-
           <div style={buttonGroupStyle}>
             <button 
               type="submit" 
@@ -90,6 +89,23 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onClose }) => {
               <LogIn size={16} />
               참여하기
             </button>
+
+            {onClose && (
+              <button 
+                type="button" 
+                onClick={onClose}
+                style={{
+                  ...secondaryBtnStyle,
+                  transform: isSecondaryHovered ? 'translate(2px, 2px)' : 'none',
+                  boxShadow: isSecondaryHovered ? '2px 2px 0px #0f172a' : '4px 4px 0px #0f172a',
+                }}
+                onMouseEnter={() => setIsSecondaryHovered(true)}
+                onMouseLeave={() => setIsSecondaryHovered(false)}
+              >
+                <Eye size={16} />
+                조회모드로 둘러보기
+              </button>
+            )}
           </div>
         </form>
       </div>
@@ -120,8 +136,9 @@ const modalContentStyle: React.CSSProperties = {
   flexDirection: 'column',
   gap: '20px',
   backgroundColor: '#ffffff',
-  borderColor: 'rgba(15, 23, 42, 0.12)',
-  boxShadow: 'var(--shadow-lg)',
+  border: '3px solid #0f172a',
+  borderRadius: '16px',
+  boxShadow: '6px 6px 0px #0f172a',
 };
 
 const headerStyle: React.CSSProperties = {
@@ -130,7 +147,7 @@ const headerStyle: React.CSSProperties = {
 
 const titleStyle: React.CSSProperties = {
   fontSize: '1.25rem',
-  fontWeight: 600,
+  fontWeight: 700,
   color: '#0f172a',
   marginBottom: '8px',
 };
@@ -155,30 +172,34 @@ const inputGroupStyle: React.CSSProperties = {
 
 const labelStyle: React.CSSProperties = {
   fontSize: '0.8rem',
-  fontWeight: 500,
-  color: '#475569',
+  fontWeight: 700,
+  color: '#0f172a',
   textTransform: 'uppercase',
   letterSpacing: '0.05em',
 };
 
 const inputStyle: React.CSSProperties = {
-  backgroundColor: 'rgba(15, 23, 42, 0.02)',
-  borderColor: 'rgba(15, 23, 42, 0.08)',
+  backgroundColor: '#ffffff',
+  border: '3px solid #0f172a',
+  borderRadius: '8px',
+  boxShadow: '2px 2px 0px #0f172a',
   padding: '10px 12px',
   color: '#0f172a',
+  fontWeight: 600,
+  outline: 'none',
 };
 
 const errorStyle: React.CSSProperties = {
   backgroundColor: '#fee2e2',
-  border: '1px solid #ef4444',
+  border: '3px solid #ef4444',
   color: '#b91c1c',
   padding: '10px',
-  borderRadius: '6px',
+  borderRadius: '8px',
+  boxShadow: '2px 2px 0px #0f172a',
   fontSize: '0.85rem',
+  fontWeight: 600,
   textAlign: 'center',
 };
-
-
 
 const buttonGroupStyle: React.CSSProperties = {
   display: 'flex',
@@ -193,6 +214,23 @@ const primaryBtnStyle: React.CSSProperties = {
   fontSize: '0.9rem',
   fontWeight: 700,
   backgroundColor: '#cbd5e1', // Same grey as create button
+  color: '#0f172a',
+  border: '3px solid #0f172a',
+  borderRadius: '8px',
+  cursor: 'pointer',
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: '8px',
+  transition: 'all 0.1s ease',
+};
+
+const secondaryBtnStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '12px',
+  fontSize: '0.9rem',
+  fontWeight: 700,
+  backgroundColor: '#ffffff',
   color: '#0f172a',
   border: '3px solid #0f172a',
   borderRadius: '8px',
