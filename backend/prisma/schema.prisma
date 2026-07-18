@@ -7,72 +7,87 @@ generator client {
   provider = "prisma-client-js"
 }
 
+enum Role {
+  owner
+  member
+}
+
 model Planner {
   id           String        @id @default(uuid())
-  title        String
-  share_code   String        @unique
+  title        String        @db.VarChar(100)
+  share_code   String        @unique @db.VarChar(36)
   is_deleted   Boolean       @default(false)
   deleted_at   DateTime?
   created_at   DateTime      @default(now())
-  
-  participants Participant[]
+
   days         Day[]
   messages     Message[]
+  participants Participant[]
 
-  @@map("planners")
+  @@map("Planner")
 }
 
 model Participant {
-  id            String    @id @default(uuid())
+  id            String     @id @default(uuid())
   planner_id    String
-  name          String
-  password_hash String
-  role          String    // "owner" or "member"
-  joined_at     DateTime  @default(now())
+  name          String     @db.VarChar(30)
+  password_hash String     @db.VarChar(255)
+  role          Role       @default(member)
+  joined_at     DateTime   @default(now())
 
-  planner       Planner   @relation(fields: [planner_id], references: [id], onDelete: Cascade)
   messages      Message[]
+  planner       Planner    @relation(fields: [planner_id], references: [id], onDelete: Cascade)
+  schedules     Schedule[]
 
-  @@map("participants")
+  @@unique([planner_id, name])
+  @@map("Participant")
 }
 
 model Day {
   id         String     @id @default(uuid())
   planner_id String
   day_number Int
-  label      String
+  label      String     @db.VarChar(20)
 
   planner    Planner    @relation(fields: [planner_id], references: [id], onDelete: Cascade)
   schedules  Schedule[]
 
-  @@map("days")
+  @@unique([planner_id, day_number])
+  @@map("Day")
 }
 
 model Schedule {
-  id         String   @id @default(uuid())
+  id         String      @id @default(uuid())
   day_id     String
-  start_time String   // "09:00"
-  end_time   String   // "11:00"
-  place_name String
-  place_lat  Float
-  place_lng  Float
-  content    String?  @db.Text
-  created_by String?
+  start_time DateTime    @db.Time
+  end_time   DateTime    @db.Time
+  place_name String?     @db.VarChar(100)
+  place_lat  Decimal?    @db.Decimal(10, 7)
+  place_lng  Decimal?    @db.Decimal(10, 7)
+  content    String?     @db.Text
+  created_by String
+  created_at DateTime    @default(now())
+  updated_at DateTime    @updatedAt
 
-  day        Day      @relation(fields: [day_id], references: [id], onDelete: Cascade)
+  day        Day         @relation(fields: [day_id], references: [id], onDelete: Cascade)
+  author     Participant @relation(fields: [created_by], references: [id])
 
-  @@map("schedules")
+  @@index([created_by], map: "Schedule_created_by_fkey")
+  @@index([day_id], map: "Schedule_day_id_fkey")
+  @@map("Schedule")
 }
 
 model Message {
   id             String      @id @default(uuid())
   planner_id     String
   participant_id String
-  content        String      @db.Text
+  content        String      @db.VarChar(500)
   created_at     DateTime    @default(now())
-
-  planner        Planner     @relation(fields: [planner_id], references: [id], onDelete: Cascade)
+  
   participant    Participant @relation(fields: [participant_id], references: [id], onDelete: Cascade)
+  planner        Planner     @relation(fields: [planner_id], references: [id], onDelete: Cascade)
 
-  @@map("messages")
+  @@index([participant_id], map: "Message_participant_id_fkey")
+  @@index([planner_id], map: "Message_planner_id_fkey")
+  @@map("Message")
 }
