@@ -130,12 +130,7 @@ const titleStyle: React.CSSProperties = {
   letterSpacing: '-0.02em',
 };
 
-const taglineStyle: React.CSSProperties = {
-  fontSize: '0.85rem',
-  fontWeight: 600,
-  color: '#475569',
-  margin: 0,
-};
+
 
 // Lower form wrapper
 const formStyle: React.CSSProperties = {
@@ -191,45 +186,6 @@ const errorStyle: React.CSSProperties = {
   fontSize: '0.85rem',
   fontWeight: 600,
   textAlign: 'center',
-};
-
-// Details/Features Card underneath to keep a clean structure - modified for light mode
-const featuresCardStyle: React.CSSProperties = {
-  backgroundColor: 'rgba(15, 23, 42, 0.03)', // Light panel background
-  border: '2px solid rgba(15, 23, 42, 0.08)', // Light border
-  borderRadius: '8px',
-  padding: '20px',
-  marginTop: '8px',
-};
-
-const featuresGridStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: '14px',
-};
-
-const featureItemStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'flex-start',
-  gap: '12px',
-};
-
-const featureIconStyle: React.CSSProperties = {
-  fontSize: '1.1rem',
-};
-
-const featureTitleStyle: React.CSSProperties = {
-  fontSize: '0.85rem',
-  fontWeight: 700,
-  color: '#0f172a', // Dark text
-  margin: '0 0 2px 0',
-};
-
-const featureDescStyle: React.CSSProperties = {
-  fontSize: '0.75rem',
-  color: '#475569', // Dark grey text
-  lineHeight: 1.4,
-  margin: 0,
 };
 
 const footerStyle: React.CSSProperties = {

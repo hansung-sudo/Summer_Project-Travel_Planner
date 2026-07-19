@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { usePlannerStore } from '../../store/plannerStore';
 import { ChatMessage } from './ChatMessage';
-import { Send, MessageSquare, Minimize2, Users } from 'lucide-react';
+import { Send, MessageSquare, Minimize2 } from 'lucide-react';
 
 export const ChatWindow: React.FC = () => {
   const { 

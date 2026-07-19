@@ -23,7 +23,6 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
   const { addSchedule, updateSchedule, deleteSchedule } = usePlannerStore();
   
   const [startTime, setStartTime] = useState('09:00');
-  const [endTime, setEndTime] = useState('11:00');
   
   const [startHour, setStartHour] = useState('09');
   const [startMin, setStartMin] = useState('00');
@@ -62,7 +61,6 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
     setEndMin(em);
 
     setStartTime(`${sh}:${sm}`);
-    setEndTime(eh === '24' ? '00:00' : `${eh}:${em}`);
     
     if (schedule) {
       setPlaceName(schedule.placeName || '');
@@ -186,9 +184,6 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
                     setEndHour(newHour);
                     if (newHour === '24') {
                       setEndMin('00');
-                      setEndTime('00:00');
-                    } else {
-                      setEndTime(`${newHour}:${endMin}`);
                     }
                   }}
                 >
@@ -203,7 +198,6 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
                   disabled={endHour === '24'}
                   onChange={(e) => {
                     setEndMin(e.target.value);
-                    setEndTime(`${endHour}:${e.target.value}`);
                   }}
                 >
                   {MINUTES.map(m => (
