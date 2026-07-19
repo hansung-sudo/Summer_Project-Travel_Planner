@@ -1,9 +1,47 @@
+import { useState, useEffect } from 'react';
+import { MainPage } from './pages/MainPage';
+import { PlannerPage } from './pages/PlannerPage';
 
 function App() {
+  const [plannerCode, setPlannerCode] = useState<string | null>(null);
+
+  // Sync state with URL query parameter '?planner=XXXXXX'
+  useEffect(() => {
+    const handleUrlChange = () => {
+      const params = new URLSearchParams(window.location.search);
+      const code = params.get('planner');
+      setPlannerCode(code);
+    };
+
+    // Check on initial load
+    handleUrlChange();
+
+    // Listen to popstate event (back/forward browser navigation)
+    window.addEventListener('popstate', handleUrlChange);
+    return () => {
+      window.removeEventListener('popstate', handleUrlChange);
+    };
+  }, []);
+
+  const navigateToPlanner = (code: string) => {
+    const newUrl = `${window.location.origin}${window.location.pathname}?planner=${code}`;
+    window.history.pushState({ plannerCode: code }, '', newUrl);
+    setPlannerCode(code);
+  };
+
+  const navigateToHome = () => {
+    const newUrl = `${window.location.origin}${window.location.pathname}`;
+    window.history.pushState({ plannerCode: null }, '', newUrl);
+    setPlannerCode(null);
+  };
+
   return (
-    <div style={{ padding: '40px', fontFamily: 'system-ui, sans-serif', textAlign: 'center' }}>
-      <h1 style={{ color: '#6366f1' }}>🧭 TripSync Frontend Boilerplate</h1>
-      <p style={{ color: '#64748b' }}>기본 폴더 구조 세팅이 완료되었습니다. 각 파트별 컴포넌트를 구현해 주세요.</p>
+    <div>
+      {plannerCode ? (
+        <PlannerPage shareCode={plannerCode} onGoBack={navigateToHome} />
+      ) : (
+        <MainPage onNavigateToPlanner={navigateToPlanner} />
+      )}
     </div>
   );
 }
