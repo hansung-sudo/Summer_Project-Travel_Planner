@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { usePlannerStore } from '../../store/plannerStore';
 import type { Schedule, Participant } from '../../types';
-import { Clock, Eye } from 'lucide-react';
+import { Eye } from 'lucide-react';
 import { getScheduleColor } from '../../utils/colorUtils';
 
 interface CircularTimetableProps {
@@ -14,7 +14,6 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
     schedules, 
     activeDayId, 
     showGridLines, 
-    toggleGridLines, 
     participants, 
     currentUser,
     updateSchedule,
@@ -546,11 +545,6 @@ const controlRowStyle: React.CSSProperties = {
   padding: '0 10px',
 };
 
-const toggleBtnStyle: React.CSSProperties = {
-  fontSize: '0.8rem',
-  padding: '6px 12px',
-  borderRadius: '6px',
-};
 
 const readOnlyBadgeStyle: React.CSSProperties = {
   display: 'flex',
@@ -607,27 +601,7 @@ const arcStyle: React.CSSProperties = {
   transition: 'fill-opacity 0.15s, stroke-width 0.15s',
 };
 
-// Warning banner styling
-const warningBannerStyle: React.CSSProperties = {
-  width: '100%',
-  maxWidth: '380px',
-  backgroundColor: 'rgba(245, 158, 11, 0.08)',
-  border: '1px solid rgba(245, 158, 11, 0.25)',
-  borderRadius: '8px',
-  padding: '12px 14px',
-  color: '#f59e0b',
-  fontSize: '0.8rem',
-  lineHeight: 1.4,
-};
 
-const warningListStyle: React.CSSProperties = {
-  margin: '6px 0 0 16px',
-  padding: 0,
-};
-
-const warningItemStyle: React.CSSProperties = {
-  color: '#b45309',
-};
 
 // Tooltip Styling
 const tooltipStyle: React.CSSProperties = {
