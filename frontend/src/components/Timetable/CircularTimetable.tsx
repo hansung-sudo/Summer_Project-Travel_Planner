@@ -10,11 +10,11 @@ interface CircularTimetableProps {
 }
 
 export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot, onEditSlot }) => {
-  const { 
-    schedules, 
-    activeDayId, 
-    showGridLines, 
-    participants, 
+  const {
+    schedules,
+    activeDayId,
+    showGridLines,
+    participants,
     currentUser,
     updateSchedule,
     addSchedule
@@ -102,13 +102,13 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
       const rect = svgRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left - cx;
       const y = e.clientY - rect.top - cy;
-      
+
       let angle = (Math.atan2(y, x) * 180) / Math.PI;
       if (angle < 0) angle += 360;
-      
+
       const alignedAngle = (angle + 90) % 360;
       let decimalHour = alignedAngle / 15;
-      
+
       // Round to nearest 1 hour
       decimalHour = Math.round(decimalHour);
       if (decimalHour >= 24) decimalHour -= 24;
@@ -143,7 +143,7 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
         // Handle wrap around: if start is late (e.g. 23) and we drag near top, treat 0/1 as 24/25
         const adjustedHour = decimalHour < dragToCreate.startHour ? decimalHour + 24 : decimalHour;
         const clampedHour = Math.max(minAllowed, Math.min(maxAllowed, adjustedHour));
-        
+
         setDragToCreate(prev => {
           if (!prev) return null;
           return {
@@ -177,7 +177,7 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
           const sStart = timeToDecimal(s.startTime);
           let sEnd = timeToDecimal(s.endTime);
           if (sEnd < sStart) sEnd = 24; // Treat 00:00 as 24:00
-          
+
           return start < sEnd && sStart < end;
         });
 
@@ -229,7 +229,7 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
     const end = endHour < startHour ? 24 : endHour;
     const startAngle = hourToAngle(startHour);
     const endAngle = hourToAngle(end);
-    
+
     const largeArcFlag = end - startHour > 12 ? 1 : 0;
 
     const outerStart = polarToCartesian(cx, cy, rOuter, startAngle);
@@ -271,14 +271,14 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
 
     // Align angle so 0 deg is at the top (subtracting -90 deg rotation)
     const alignedAngle = (angle + 90) % 360;
-    
+
     // Snap to nearest 1 hour on click (first/second half hour logic)
     let clickedHour = alignedAngle / 15;
     clickedHour = Math.round(clickedHour);
     if (clickedHour >= 24) clickedHour -= 24;
 
     // Check if clicked on an existing schedule arc
-    const dist = Math.sqrt(x*x + y*y);
+    const dist = Math.sqrt(x * x + y * y);
 
     // If clicked the center area ("클릭하여 일정 추가" label)
     if (dist < rInner - 10) {
@@ -359,25 +359,25 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
           {/* Inner space click zone / info & Double faint circular borders */}
           <circle cx={cx} cy={cy} r={rInner} fill="rgba(15, 23, 42, 0.03)" stroke="rgba(15, 23, 42, 0.08)" strokeWidth={1} />
           <circle cx={cx} cy={cy} r={rOuter} fill="none" stroke="rgba(15, 23, 42, 0.08)" strokeWidth={1} />
-          
-          <text 
-            x={cx} 
-            y={cy - 10} 
-            textAnchor="middle" 
+
+          <text
+            x={cx}
+            y={cy - 10}
+            textAnchor="middle"
             style={centerTitleStyle}
           >
             24H WHEEL
           </text>
-          
-          <text 
-            x={cx} 
-            y={cy + 15} 
-            textAnchor="middle" 
+
+          <text
+            x={cx}
+            y={cy + 15}
+            textAnchor="middle"
             style={centerSubtitleStyle}
           >
             {currentUser ? '클릭하여 일정 추가' : '로그인 후 추가 가능'}
           </text>
- 
+
           {/* Hour labels (00, 03, 06, 09, 12, 15, 18, 21) */}
           {[0, 3, 6, 9, 12, 15, 18, 21].map((hour) => {
             const angle = hourToAngle(hour);
@@ -394,7 +394,7 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
               </text>
             );
           })}
- 
+
           {/* All 24 hour grid lines */}
           {showGridLines && Array.from({ length: 24 }).map((_, hour) => {
             const angle = hourToAngle(hour);
@@ -505,9 +505,9 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
             }}
           >
             <div style={tooltipHeaderStyle}>
-              <span style={{ 
-                ...tooltipDotStyle, 
-                backgroundColor: getScheduleColor(hoveredSchedule.id) 
+              <span style={{
+                ...tooltipDotStyle,
+                backgroundColor: getScheduleColor(hoveredSchedule.id)
               }} />
               <strong style={tooltipTimeStyle}>
                 {hoveredSchedule.startTime} - {hoveredSchedule.endTime}
