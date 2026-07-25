@@ -1,12 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { usePlannerStore } from '../../store/plannerStore';
 import type { Schedule } from '../../types';
-import { Save, Trash2, X, MapPin } from 'lucide-react';
+import { loadKakao } from '../../utils/kakaoLoader';
+import { isKakaoKeySet } from '../../config/kakao';
+import { Save, Trash2, X, MapPin, Search } from 'lucide-react';
+
+interface PlaceResult {
+  name: string;
+  addr: string;
+  lat: number;
+  lng: number;
+}
 
 interface TimeSlotModalProps {
   schedule?: Schedule | null; // If present, we are in Edit mode
   defaultStartTime?: string | null;
   defaultEndTime?: string | null;
+  defaultPlace?: { name: string; lat: number; lng: number } | null; // 지도/검색에서 선택한 장소 프리필
   onClose: () => void;
 }
 
@@ -14,11 +24,12 @@ const HOURS = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0')
 const END_HOURS = Array.from({ length: 25 }, (_, i) => i.toString().padStart(2, '0')); // 00 to 24
 const MINUTES = Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0'));
 
-export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({ 
-  schedule, 
-  defaultStartTime, 
-  defaultEndTime, 
-  onClose 
+export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
+  schedule,
+  defaultStartTime,
+  defaultEndTime,
+  defaultPlace,
+  onClose
 }) => {
   const { addSchedule, updateSchedule, deleteSchedule } = usePlannerStore();
   
@@ -33,6 +44,53 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
   const [placeLat, setPlaceLat] = useState<number | undefined>(undefined);
   const [placeLng, setPlaceLng] = useState<number | undefined>(undefined);
   const [content, setContent] = useState('');
+
+  // 카카오 장소 검색 (좌표 등록용)
+  const [placeResults, setPlaceResults] = useState<PlaceResult[]>([]);
+  const placesRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (!isKakaoKeySet()) return;
+    let canceled = false;
+    loadKakao()
+      .then((kakao) => {
+        if (!canceled) placesRef.current = new kakao.maps.services.Places();
+      })
+      .catch(() => {});
+    return () => {
+      canceled = true;
+    };
+  }, []);
+
+  const handlePlaceSearch = (value: string) => {
+    setPlaceName(value);
+    if (!value.trim() || !placesRef.current) {
+      setPlaceResults([]);
+      return;
+    }
+    const kakao = (window as any).kakao;
+    placesRef.current.keywordSearch(value, (data: any[], status: any) => {
+      if (status === kakao.maps.services.Status.OK) {
+        setPlaceResults(
+          data.slice(0, 6).map((d) => ({
+            name: d.place_name,
+            addr: d.road_address_name || d.address_name || '',
+            lat: parseFloat(d.y),
+            lng: parseFloat(d.x),
+          }))
+        );
+      } else {
+        setPlaceResults([]);
+      }
+    });
+  };
+
+  const handleSelectPlace = (p: PlaceResult) => {
+    setPlaceName(p.name);
+    setPlaceLat(p.lat);
+    setPlaceLng(p.lng);
+    setPlaceResults([]);
+  };
 
   // Synchronize component state with props
   useEffect(() => {
@@ -68,12 +126,13 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
       setPlaceLng(schedule.placeLng);
       setContent(schedule.content || '');
     } else {
-      setPlaceName('');
-      setPlaceLat(undefined);
-      setPlaceLng(undefined);
+      setPlaceName(defaultPlace?.name || '');
+      setPlaceLat(defaultPlace?.lat);
+      setPlaceLng(defaultPlace?.lng);
       setContent('');
     }
-  }, [schedule, defaultStartTime, defaultEndTime]);
+    setPlaceResults([]);
+  }, [schedule, defaultStartTime, defaultEndTime, defaultPlace]);
 
   // Hook into window event for place selection from map
   useEffect(() => {
@@ -209,15 +268,16 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
           </div>
 
           <div style={inputGroupStyle}>
-            <label style={labelStyle}>장소명</label>
+            <label style={labelStyle}>장소</label>
             <div style={placeInputWrapperStyle}>
+              <Search size={15} style={placeSearchIconStyle} />
               <input
                 type="text"
                 className="glass-input"
-                style={{ ...inputStyle, flex: 1 }}
+                style={{ ...inputStyle, flex: 1, paddingLeft: '34px' }}
                 value={placeName}
-                onChange={(e) => setPlaceName(e.target.value)}
-                placeholder="지도를 클릭하거나 직접 입력하세요"
+                onChange={(e) => handlePlaceSearch(e.target.value)}
+                placeholder="장소 검색 (예: 성산일출봉) 또는 직접 입력"
               />
               {placeLat && placeLng && (
                 <div style={coordBadgeStyle}>
@@ -226,6 +286,20 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
                 </div>
               )}
             </div>
+
+            {placeResults.length > 0 && (
+              <div style={placeResultsStyle}>
+                {placeResults.map((p, i) => (
+                  <div key={i} style={placeResultItemStyle} onClick={() => handleSelectPlace(p)}>
+                    <MapPin size={13} style={{ color: '#94a3b8', flexShrink: 0 }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={placeResultNameStyle}>{p.name}</div>
+                      <div style={placeResultAddrStyle}>{p.addr}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div style={inputGroupStyle}>
@@ -383,6 +457,50 @@ const placeInputWrapperStyle: React.CSSProperties = {
   alignItems: 'center',
   gap: '8px',
   position: 'relative',
+};
+
+const placeSearchIconStyle: React.CSSProperties = {
+  position: 'absolute',
+  left: '10px',
+  color: '#64748b',
+  pointerEvents: 'none',
+  zIndex: 1,
+};
+
+const placeResultsStyle: React.CSSProperties = {
+  marginTop: '8px',
+  backgroundColor: '#ffffff',
+  border: '3px solid #0f172a',
+  borderRadius: '8px',
+  boxShadow: '2px 2px 0px #0f172a',
+  maxHeight: '170px',
+  overflowY: 'auto',
+};
+
+const placeResultItemStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '8px',
+  padding: '8px 10px',
+  cursor: 'pointer',
+  borderBottom: '1px solid rgba(15, 23, 42, 0.08)',
+};
+
+const placeResultNameStyle: React.CSSProperties = {
+  fontSize: '0.82rem',
+  fontWeight: 600,
+  color: '#0f172a',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+};
+
+const placeResultAddrStyle: React.CSSProperties = {
+  fontSize: '0.72rem',
+  color: '#64748b',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
 };
 
 const coordBadgeStyle: React.CSSProperties = {

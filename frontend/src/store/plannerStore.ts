@@ -75,6 +75,9 @@ const saveStoredPlanner = (
 
 
 
+// 같은 기기에서 로그인 유지를 위한 세션 키 (플래너별로 로그인한 참여자 id 저장)
+const sessionKey = (shareCode: string) => `tripsync_session_${shareCode}`;
+
 export const usePlannerStore = create<PlannerState>((set, get) => ({
   planner: null,
   participants: [],
@@ -143,6 +146,14 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
     const planners = getStoredPlanners();
     const data = planners[shareCode];
     if (data && !data.planner.isDeleted) {
+      // 같은 기기에서 이전에 로그인했다면 그 참여자로 자동 로그인 유지
+      let restoredUser: Participant | null = null;
+      try {
+        const sid = localStorage.getItem(sessionKey(shareCode));
+        if (sid) restoredUser = data.participants.find((p) => p.id === sid) || null;
+      } catch {
+        /* ignore */
+      }
       set({
         planner: data.planner,
         participants: data.participants,
@@ -150,7 +161,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
         schedules: data.schedules,
         messages: data.messages,
         activeDayId: data.days.length > 0 ? data.days[0].id : null,
-        currentUser: null, // Reset login on load
+        currentUser: restoredUser,
       });
       return true;
     }
@@ -166,6 +177,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
     if (existing) {
       // Just log in as existing user (or simulate session restore)
       set({ currentUser: existing });
+      try { localStorage.setItem(sessionKey(planner.shareCode), existing.id); } catch { /* ignore */ }
       return existing;
     }
 
@@ -200,6 +212,7 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
       currentUser: newParticipant,
       messages: updatedMessages
     });
+    try { localStorage.setItem(sessionKey(planner.shareCode), newParticipant.id); } catch { /* ignore */ }
 
     // Save changes
     const state = get();
@@ -215,6 +228,10 @@ export const usePlannerStore = create<PlannerState>((set, get) => ({
   },
 
   logout: () => {
+    const { planner } = get();
+    if (planner) {
+      try { localStorage.removeItem(sessionKey(planner.shareCode)); } catch { /* ignore */ }
+    }
     set({ currentUser: null });
   },
 
