@@ -140,9 +140,11 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
         }
       } else if (dragToCreate) {
         const { minAllowed, maxAllowed } = getFreeInterval(dragToCreate.startHour);
-        // Handle wrap around: if start is late (e.g. 23) and we drag near top, treat 0/1 as 24/25
-        const adjustedHour = decimalHour < dragToCreate.startHour ? decimalHour + 24 : decimalHour;
-        const clampedHour = Math.max(minAllowed, Math.min(maxAllowed, adjustedHour));
+        let rawHour = decimalHour;
+        if (decimalHour === 0 && dragToCreate.startHour >= 12) {
+          rawHour = 24;
+        }
+        const clampedHour = Math.max(minAllowed, Math.min(maxAllowed, rawHour));
 
         setDragToCreate(prev => {
           if (!prev) return null;
