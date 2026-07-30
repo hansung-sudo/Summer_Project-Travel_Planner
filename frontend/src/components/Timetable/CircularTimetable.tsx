@@ -118,21 +118,23 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
         if (!schedule) return;
 
         const { minAllowed, maxAllowed } = getResizingInterval(activeDrag.scheduleId);
+        let rawHour = decimalHour;
 
         if (activeDrag.type === 'start') {
-          const endDec = timeToDecimal(schedule.endTime);
-          // Clamp start between minAllowed and endDec - 1
-          const clampedHour = Math.max(minAllowed, Math.min(endDec - 1, decimalHour));
+          const endDec = timeToDecimal(schedule.endTime) || 24;
+          const clampedHour = Math.max(minAllowed, Math.min(endDec - 1, rawHour));
           const timeStr = `${clampedHour.toString().padStart(2, '0')}:00`;
           updateSchedule({
             ...schedule,
             startTime: timeStr,
           });
         } else {
+          if (rawHour === 0 && timeToDecimal(schedule.startTime) >= 12) {
+            rawHour = 24;
+          }
           const startDec = timeToDecimal(schedule.startTime);
-          // Clamp end between startDec + 1 and maxAllowed
-          const clampedHour = Math.max(startDec + 1, Math.min(maxAllowed, decimalHour));
-          const timeStr = `${clampedHour.toString().padStart(2, '0')}:00`;
+          const clampedHour = Math.max(startDec + 1, Math.min(maxAllowed, rawHour));
+          const timeStr = clampedHour === 24 ? '00:00' : `${clampedHour.toString().padStart(2, '0')}:00`;
           updateSchedule({
             ...schedule,
             endTime: timeStr,
@@ -288,15 +290,38 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
       return;
     }
 
-    if (dist >= rInner - 10 && dist <= rOuter + 10) {
-      // Find if we clicked exactly on an existing schedule
+    if (dist >= rInner - 15 && dist <= rOuter + 20) {
+      // Check if click is near outer edge handle of any existing schedule slot
+      for (const s of activeSchedules) {
+        const startDec = timeToDecimal(s.startTime);
+        let endDec = timeToDecimal(s.endTime);
+        if (endDec === 0 || endDec < startDec) endDec = 24;
+
+        const startAngle = hourToAngle(startDec);
+        const endAngle = hourToAngle(endDec);
+
+        const startPos = polarToCartesian(cx, cy, rOuter, startAngle);
+        const endPos = polarToCartesian(cx, cy, rOuter, endAngle);
+
+        const distToStart = Math.hypot(x - (startPos.x - cx), y - (startPos.y - cy));
+        const distToEnd = Math.hypot(x - (endPos.x - cx), y - (endPos.y - cy));
+
+        if (distToStart <= 18) {
+          setActiveDrag({ scheduleId: s.id, type: 'start' });
+          return;
+        }
+        if (distToEnd <= 18) {
+          setActiveDrag({ scheduleId: s.id, type: 'end' });
+          return;
+        }
+      }
+
+      // Find if we clicked inside an existing schedule body
       const clickedSched = activeSchedules.find(s => {
         const start = timeToDecimal(s.startTime);
-        const end = timeToDecimal(s.endTime);
+        let end = timeToDecimal(s.endTime);
+        if (end === 0 || end < start) end = 24;
         const currentDecimal = (alignedAngle / 15);
-        if (end < start) { // overnight
-          return currentDecimal >= start || currentDecimal < end;
-        }
         return currentDecimal >= start && currentDecimal < end;
       });
 
@@ -457,40 +482,60 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
                   onMouseLeave={() => setHoveredSchedule(null)}
                 />
 
-                {/* Drag handles shown only when hovered or actively dragging */}
-                {currentUser && (isHovered || isDraggingThis) && (
-                  <>
+                {/* Drag handles at outer corners */}
+                {currentUser && (
+                  <g style={{ opacity: isHovered || isDraggingThis ? 1.0 : 0.85 }}>
                     {/* Start handle */}
-                    <circle
-                      cx={startHandlePos.x}
-                      cy={startHandlePos.y}
-                      r={7}
-                      fill="#cbd5e1"
-                      stroke="#0f172a"
-                      strokeWidth={2.5}
-                      style={{ cursor: 'pointer' }}
+                    <g
+                      style={{ cursor: 'ew-resize' }}
                       onMouseDown={(e) => {
                         e.stopPropagation();
                         e.preventDefault();
                         setActiveDrag({ scheduleId: schedule.id, type: 'start' });
                       }}
-                    />
+                    >
+                      <circle cx={startHandlePos.x} cy={startHandlePos.y} r={14} fill="transparent" />
+                      <circle
+                        cx={startHandlePos.x}
+                        cy={startHandlePos.y}
+                        r={isHovered || isDraggingThis ? 7.5 : 5.5}
+                        fill="#38bdf8"
+                        stroke="#0f172a"
+                        strokeWidth={2}
+                      />
+                      <circle
+                        cx={startHandlePos.x}
+                        cy={startHandlePos.y}
+                        r={2}
+                        fill="#ffffff"
+                      />
+                    </g>
                     {/* End handle */}
-                    <circle
-                      cx={endHandlePos.x}
-                      cy={endHandlePos.y}
-                      r={7}
-                      fill="#ffffff"
-                      stroke="#0f172a"
-                      strokeWidth={2.5}
-                      style={{ cursor: 'pointer' }}
+                    <g
+                      style={{ cursor: 'ew-resize' }}
                       onMouseDown={(e) => {
                         e.stopPropagation();
                         e.preventDefault();
                         setActiveDrag({ scheduleId: schedule.id, type: 'end' });
                       }}
-                    />
-                  </>
+                    >
+                      <circle cx={endHandlePos.x} cy={endHandlePos.y} r={14} fill="transparent" />
+                      <circle
+                        cx={endHandlePos.x}
+                        cy={endHandlePos.y}
+                        r={isHovered || isDraggingThis ? 7.5 : 5.5}
+                        fill="#f43f5e"
+                        stroke="#0f172a"
+                        strokeWidth={2}
+                      />
+                      <circle
+                        cx={endHandlePos.x}
+                        cy={endHandlePos.y}
+                        r={2}
+                        fill="#ffffff"
+                      />
+                    </g>
+                  </g>
                 )}
               </g>
             );
