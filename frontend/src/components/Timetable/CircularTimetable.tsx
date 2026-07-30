@@ -476,7 +476,7 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
 
           {/* Render schedule arcs */}
           {activeSchedules.map((schedule) => {
-            const slotColor = getScheduleColor(schedule.id);
+            const slotColor = getScheduleColor(schedule.id, activeSchedules);
             const isHovered = hoveredSchedule?.id === schedule.id;
             const isDraggingThis = activeDrag?.scheduleId === schedule.id;
 
@@ -611,7 +611,7 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
             <div style={tooltipHeaderStyle}>
               <span style={{
                 ...tooltipDotStyle,
-                backgroundColor: getScheduleColor(hoveredSchedule.id)
+                backgroundColor: getScheduleColor(hoveredSchedule.id, activeSchedules)
               }} />
               <strong style={tooltipTimeStyle}>
                 {hoveredSchedule.startTime} - {hoveredSchedule.endTime}
@@ -650,7 +650,7 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #e2e8f0', paddingBottom: '4px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: getScheduleColor(selectedScheduleMenu.schedule.id) }} />
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: getScheduleColor(selectedScheduleMenu.schedule.id, activeSchedules) }} />
                 <strong style={{ fontSize: '0.825rem', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '120px' }}>
                   {selectedScheduleMenu.schedule.placeName || '(장소 미정)'}
                 </strong>

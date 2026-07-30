@@ -167,7 +167,7 @@ export const PlannerPage: React.FC<PlannerPageProps> = ({ shareCode, onGoBack })
                 style={timelineItemStyle}
                 onClick={() => currentUser && handleEditSlotTrigger(schedule)}
               >
-                <div style={{ ...timelineIndicatorStyle, backgroundColor: getScheduleColor(schedule.id) }} />
+                <div style={{ ...timelineIndicatorStyle, backgroundColor: getScheduleColor(schedule.id, sortedSchedules) }} />
                 <div style={timelineContentStyle}>
                   <div style={timelineRowStyle}>
                     <strong style={timelinePlaceStyle}>
@@ -179,7 +179,7 @@ export const PlannerPage: React.FC<PlannerPageProps> = ({ shareCode, onGoBack })
                   </div>
                   {schedule.content && <p style={timelineMemoStyle}>{schedule.content}</p>}
                   <div style={timelineCreatorRowStyle}>
-                    <span style={{ ...timelineDotStyle, backgroundColor: getScheduleColor(schedule.id) }} />
+                    <span style={{ ...timelineDotStyle, backgroundColor: getScheduleColor(schedule.id, sortedSchedules) }} />
                     <span>등록: {creator?.name || '알수없음'}</span>
                   </div>
                 </div>
