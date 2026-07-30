@@ -7,9 +7,10 @@ import { getScheduleColor } from '../../utils/colorUtils';
 interface CircularTimetableProps {
   onAddSlot: (startTime: string, endTime: string) => void;
   onEditSlot: (schedule: Schedule) => void;
+  size?: number; // 시계 지름(px). 좁은 슬롯에서는 작게 전달.
 }
 
-export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot, onEditSlot }) => {
+export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot, onEditSlot, size = 380 }) => {
   const {
     schedules,
     activeDayId,
@@ -20,12 +21,11 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
     addSchedule
   } = usePlannerStore();
 
-  // SVG parameters
-  const size = 380;
+  // SVG parameters (지름 size에 비례해 스케일)
   const cx = size / 2;
   const cy = size / 2;
-  const rOuter = 145;
-  const rInner = 95;
+  const rOuter = size * 0.382;
+  const rInner = size * 0.25;
 
   // Filter schedules for the current active day
   const activeSchedules = schedules.filter(s => s.dayId === activeDayId);
@@ -381,7 +381,7 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
           {/* Hour labels (00, 03, 06, 09, 12, 15, 18, 21) */}
           {[0, 3, 6, 9, 12, 15, 18, 21].map((hour) => {
             const angle = hourToAngle(hour);
-            const pos = polarToCartesian(cx, cy, rOuter + 22, angle);
+            const pos = polarToCartesian(cx, cy, rOuter + size * 0.058, angle);
             return (
               <text
                 key={hour}

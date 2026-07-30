@@ -1,15 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { usePlannerStore } from '../store/plannerStore';
 import { CircularTimetable } from '../components/Timetable/CircularTimetable';
 import { TimeSlotModal } from '../components/Timetable/TimeSlotModal';
 import { KakaoMap } from '../components/Map/KakaoMap';
 import { ChatWindow } from '../components/Chat/ChatWindow';
 import { LoginForm } from '../components/Auth/LoginForm';
+import { SplitCalculator } from '../components/Split/SplitCalculator';
 import type { Schedule } from '../types';
 import { getScheduleColor } from '../utils/colorUtils';
 import {
   Share2, LogIn, LogOut, Plus, Trash2, Calendar, User,
-  MapPin, Clock, Edit3, ShieldAlert, ArrowLeft
+  MapPin, Clock, Edit3, ShieldAlert, ArrowLeft, ArrowLeftRight
 } from 'lucide-react';
 
 interface PlannerPageProps {
@@ -38,6 +39,26 @@ export const PlannerPage: React.FC<PlannerPageProps> = ({ shareCode, onGoBack })
   const [defaultEndTime, setDefaultEndTime] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [pendingPlace, setPendingPlace] = useState<{ name: string; lat: number; lng: number } | null>(null);
+  const [swapPanels, setSwapPanels] = useState(false); // 시간표 ↔ 지도 영역 기능 스왑 (지도 크게 보기)
+
+  // 지도/검색에서 장소가 선택되면 (모달이 닫혀 있을 때) 일정 추가 모달을 장소가 채워진 채로 연다.
+  const slotModalOpenRef = useRef(showSlotModal);
+  slotModalOpenRef.current = showSlotModal;
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent<{ name: string; lat: number; lng: number }>).detail;
+      if (slotModalOpenRef.current) return; // 이미 모달이 열려 있으면 모달이 자체적으로 반영
+      if (!usePlannerStore.getState().currentUser) return;
+      setEditingSchedule(null);
+      setDefaultStartTime(null);
+      setDefaultEndTime(null);
+      setPendingPlace(detail);
+      setShowSlotModal(true);
+    };
+    window.addEventListener('tripsync_place_selected', handler);
+    return () => window.removeEventListener('tripsync_place_selected', handler);
+  }, []);
 
   // Load planner when shareCode changes
   useEffect(() => {
@@ -98,6 +119,7 @@ export const PlannerPage: React.FC<PlannerPageProps> = ({ shareCode, onGoBack })
 
   const handleAddSlotTrigger = (startTime: string, endTime: string) => {
     setEditingSchedule(null);
+    setPendingPlace(null);
     setDefaultStartTime(startTime);
     setDefaultEndTime(endTime);
     setShowSlotModal(true);
@@ -106,6 +128,7 @@ export const PlannerPage: React.FC<PlannerPageProps> = ({ shareCode, onGoBack })
   const handleEditSlotTrigger = (schedule: Schedule) => {
     setDefaultStartTime(null);
     setDefaultEndTime(null);
+    setPendingPlace(null);
     setEditingSchedule(schedule);
     setShowSlotModal(true);
   };
@@ -115,6 +138,81 @@ export const PlannerPage: React.FC<PlannerPageProps> = ({ shareCode, onGoBack })
     setShowDeleteConfirm(false);
   };
 
+  // 시간표 패널 / 지도 패널을 변수로 정의해 두 슬롯(중앙 큰 영역 · 우측 작은 영역) 간 스왑
+  const timetablePanel = (
+    <div className="glass-panel" style={{ ...panelStyle, flex: 1, display: 'flex', flexDirection: 'column' }}>
+      <div style={panelHeaderStyle}>
+        <Clock size={16} style={{ color: '#94a3b8' }} />
+        <h3 style={panelTitleStyle}>{activeDay?.label || '일차'} 시간표</h3>
+      </div>
+
+      <div style={timetableContainerStyle}>
+        <CircularTimetable
+          onAddSlot={handleAddSlotTrigger}
+          onEditSlot={handleEditSlotTrigger}
+          size={swapPanels ? 300 : 380}
+        />
+      </div>
+
+      <hr style={dividerStyle} />
+
+      <div style={timelineWrapperStyle}>
+        <h4 style={timelineHeaderStyle}>상세 일정표</h4>
+        <div style={timelineListStyle}>
+          {sortedSchedules.map((schedule) => {
+            const creator = participants.find((p) => p.id === schedule.createdBy);
+            return (
+              <div
+                key={schedule.id}
+                style={timelineItemStyle}
+                onClick={() => currentUser && handleEditSlotTrigger(schedule)}
+              >
+                <div style={{ ...timelineIndicatorStyle, backgroundColor: getScheduleColor(schedule.id) }} />
+                <div style={timelineContentStyle}>
+                  <div style={timelineRowStyle}>
+                    <strong style={timelinePlaceStyle}>
+                      {schedule.placeName || '(장소 미지정)'}
+                    </strong>
+                    <span style={timelineTimeStyle}>
+                      {schedule.startTime} - {schedule.endTime}
+                    </span>
+                  </div>
+                  {schedule.content && <p style={timelineMemoStyle}>{schedule.content}</p>}
+                  <div style={timelineCreatorRowStyle}>
+                    <span style={{ ...timelineDotStyle, backgroundColor: getScheduleColor(schedule.id) }} />
+                    <span>등록: {creator?.name || '알수없음'}</span>
+                  </div>
+                </div>
+                {currentUser && (
+                  <button style={editIconStyle}>
+                    <Edit3 size={12} />
+                  </button>
+                )}
+              </div>
+            );
+          })}
+          {sortedSchedules.length === 0 && (
+            <div style={noSchedulesStyle}>
+              등록된 일정이 없습니다. 시간표나 더하기 버튼을 통해 추가하세요.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  const mapPanel = (
+    <div className="glass-panel" style={{ ...panelStyle, flex: 1, display: 'flex', flexDirection: 'column' }}>
+      <div style={panelHeaderStyle}>
+        <MapPin size={16} style={{ color: '#94a3b8' }} />
+        <h3 style={panelTitleStyle}>지도 연동</h3>
+      </div>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <KakaoMap />
+      </div>
+    </div>
+  );
+
   return (
     <div style={layoutStyle}>
       {/* Top Header */}
@@ -122,9 +220,28 @@ export const PlannerPage: React.FC<PlannerPageProps> = ({ shareCode, onGoBack })
         <div style={headerLeftStyle}>
           <h2 style={plannerTitleStyle}>{planner.title}</h2>
           <span style={codeBadgeStyle}>CODE: {shareCode}</span>
+          {currentUser?.role === 'owner' && (
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              style={headerDeleteBtnStyle}
+              title="플래너 삭제"
+            >
+              <Trash2 size={13} color="#ef4444" />
+              삭제
+            </button>
+          )}
         </div>
 
         <div style={headerRightStyle}>
+          <button
+            onClick={() => setSwapPanels((v) => !v)}
+            style={swapBtnStyle}
+            title="시간표 ↔ 지도 위치 전환"
+          >
+            <ArrowLeftRight size={13} />
+            {swapPanels ? '시간표 크게' : '지도 크게'}
+          </button>
+
           <button onClick={handleShare} className="btn btn-secondary" style={actionBtnStyle}>
             <Share2 size={14} />
             {copied ? '복사 완료!' : '공유 링크 복사'}
@@ -201,105 +318,18 @@ export const PlannerPage: React.FC<PlannerPageProps> = ({ shareCode, onGoBack })
             </div>
           </div>
 
-          {/* Delete planner button (owner only) */}
-          <div className="glass-panel" style={{ ...panelStyle, marginTop: 'auto' }}>
-            <div style={panelHeaderStyle}>
-              <ShieldAlert size={16} style={{ color: '#94a3b8' }} />
-              <h3 style={panelTitleStyle}>방 관리</h3>
-            </div>
-            {currentUser?.role === 'owner' ? (
-              <button
-                onClick={() => setShowDeleteConfirm(true)}
-                className="btn btn-secondary"
-                style={deletePlannerBtnStyle}
-              >
-                <Trash2 size={14} color="#ef4444" />
-                <span>플래너 삭제하기</span>
-              </button>
-            ) : (
-              <div style={ownerOnlyNoticeStyle}>
-                플래너 삭제는 최초 생성자(방장)만 가능합니다.
-              </div>
-            )}
-          </div>
+          {/* 정산 계산기 */}
+          <SplitCalculator />
         </section>
 
-        {/* Center: Timetable and Timeline list */}
+        {/* Center (넓은 슬롯): 스왑 상태에 따라 지도 또는 시간표 */}
         <section style={centerPanelStyle}>
-          <div className="glass-panel" style={{ ...panelStyle, flex: 1, display: 'flex', flexDirection: 'column' }}>
-            <div style={panelHeaderStyle}>
-              <Clock size={16} style={{ color: '#94a3b8' }} />
-              <h3 style={panelTitleStyle}>
-                {activeDay?.label || '일차'} 시간표
-              </h3>
-            </div>
-
-            <div style={timetableContainerStyle}>
-              <CircularTimetable
-                onAddSlot={handleAddSlotTrigger}
-                onEditSlot={handleEditSlotTrigger}
-              />
-            </div>
-
-            <hr style={dividerStyle} />
-
-            {/* Chronological Timeline Details list */}
-            <div style={timelineWrapperStyle}>
-              <h4 style={timelineHeaderStyle}>상세 일정표</h4>
-              <div style={timelineListStyle}>
-                {sortedSchedules.map((schedule) => {
-                  const creator = participants.find(p => p.id === schedule.createdBy);
-                  return (
-                    <div
-                      key={schedule.id}
-                      style={timelineItemStyle}
-                      onClick={() => currentUser && handleEditSlotTrigger(schedule)}
-                    >
-                      <div style={{ ...timelineIndicatorStyle, backgroundColor: getScheduleColor(schedule.id) }} />
-                      <div style={timelineContentStyle}>
-                        <div style={timelineRowStyle}>
-                          <strong style={timelinePlaceStyle}>
-                            {schedule.placeName || '(장소 미지정)'}
-                          </strong>
-                          <span style={timelineTimeStyle}>
-                            {schedule.startTime} - {schedule.endTime}
-                          </span>
-                        </div>
-                        {schedule.content && <p style={timelineMemoStyle}>{schedule.content}</p>}
-                        <div style={timelineCreatorRowStyle}>
-                          <span style={{ ...timelineDotStyle, backgroundColor: getScheduleColor(schedule.id) }} />
-                          <span>등록: {creator?.name || '알수없음'}</span>
-                        </div>
-                      </div>
-                      {currentUser && (
-                        <button style={editIconStyle}>
-                          <Edit3 size={12} />
-                        </button>
-                      )}
-                    </div>
-                  );
-                })}
-                {sortedSchedules.length === 0 && (
-                  <div style={noSchedulesStyle}>
-                    등록된 일정이 없습니다. 시간표나 더하기 버튼을 통해 추가하세요.
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
+          {swapPanels ? mapPanel : timetablePanel}
         </section>
 
-        {/* Right Sidebar: Kakao Map link */}
+        {/* Right (좁은 슬롯): 스왑 상태에 따라 시간표 또는 지도 */}
         <section style={sidebarRightStyle}>
-          <div className="glass-panel" style={{ ...panelStyle, flex: 1, display: 'flex', flexDirection: 'column' }}>
-            <div style={panelHeaderStyle}>
-              <MapPin size={16} style={{ color: '#94a3b8' }} />
-              <h3 style={panelTitleStyle}>지도 연동</h3>
-            </div>
-            <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-              <KakaoMap />
-            </div>
-          </div>
+          {swapPanels ? timetablePanel : mapPanel}
         </section>
       </main>
 
@@ -317,7 +347,11 @@ export const PlannerPage: React.FC<PlannerPageProps> = ({ shareCode, onGoBack })
           schedule={editingSchedule}
           defaultStartTime={defaultStartTime}
           defaultEndTime={defaultEndTime}
-          onClose={() => setShowSlotModal(false)}
+          defaultPlace={pendingPlace}
+          onClose={() => {
+            setShowSlotModal(false);
+            setPendingPlace(null);
+          }}
         />
       )}
 
@@ -640,29 +674,34 @@ const noParticipantsStyle: React.CSSProperties = {
   padding: '8px 0',
 };
 
-const deletePlannerBtnStyle: React.CSSProperties = {
-  width: '100%',
+const swapBtnStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '5px',
   padding: '8px 12px',
+  fontSize: '0.78rem',
+  fontWeight: 700,
+  color: '#0f172a',
+  backgroundColor: '#ffffff',
+  border: '3px solid #0f172a',
+  borderRadius: '8px',
+  boxShadow: '2px 2px 0px #0f172a',
+  cursor: 'pointer',
+};
+
+const headerDeleteBtnStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '4px',
+  padding: '5px 10px',
   fontSize: '0.75rem',
   fontWeight: 700,
   color: '#b91c1c',
   backgroundColor: '#fee2e2',
-  border: '3px solid #0f172a',
-  borderRadius: '8px',
+  border: '2px solid #0f172a',
+  borderRadius: '6px',
   boxShadow: '2px 2px 0px #0f172a',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: '6px',
   cursor: 'pointer',
-  transition: 'all 0.1s ease',
-};
-
-const ownerOnlyNoticeStyle: React.CSSProperties = {
-  fontSize: '0.7rem',
-  color: '#64748b',
-  lineHeight: 1.4,
-  textAlign: 'center',
 };
 
 const timetableContainerStyle: React.CSSProperties = {
@@ -805,19 +844,19 @@ const modalContentStyle: React.CSSProperties = {
   flexDirection: 'column',
   gap: '16px',
   backgroundColor: '#ffffff',
-  borderColor: 'rgba(15, 23, 42, 0.12)',
-  boxShadow: 'var(--shadow-lg)',
+  border: '3px solid #0f172a',
+  boxShadow: '6px 6px 0px #0f172a',
 };
 
 const modalTitleStyle: React.CSSProperties = {
   fontSize: '1.1rem',
   fontWeight: 700,
-  color: '#f8fafc',
+  color: '#0f172a',
 };
 
 const modalDescStyle: React.CSSProperties = {
   fontSize: '0.8rem',
-  color: '#94a3b8',
+  color: '#475569',
   lineHeight: 1.5,
 };
 

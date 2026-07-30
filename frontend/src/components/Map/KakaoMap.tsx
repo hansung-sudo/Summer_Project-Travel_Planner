@@ -1,125 +1,194 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { usePlannerStore } from '../../store/plannerStore';
-import { Search, MapPin, Navigation, Info } from 'lucide-react';
+import { loadKakao } from '../../utils/kakaoLoader';
+import { isKakaoKeySet } from '../../config/kakao';
+import { getScheduleColor } from '../../utils/colorUtils';
+import { Search, MapPin, Navigation, Info, AlertTriangle, Plus } from 'lucide-react';
 
-// Coordinates scaled to fit our SVG mock map (roughly mapping Jeju coords to 340x260 grid)
-// Jeju bounding box approx: Lat 33.1 to 33.6, Lng 126.1 to 127.0
-const mapWidth = 340;
-const mapHeight = 220;
+interface SearchResult {
+  name: string;
+  addr: string;
+  lat: number;
+  lng: number;
+}
 
-const convertCoordsToXY = (lat: number, lng: number) => {
-  const minLat = 33.15;
-  const maxLat = 33.58;
-  const minLng = 126.15;
-  const maxLng = 127.0;
+// 지도 가로:세로 비율 (작은/큰 버전 동일하게 유지). 폭에 맞춰 높이 자동 계산.
+const MAP_ASPECT = '5 / 4';
 
-  // Scale map
-  const x = ((lng - minLng) / (maxLng - minLng)) * mapWidth;
-  // SVG y is downwards, so invert latitude
-  const y = mapHeight - ((lat - minLat) / (maxLat - minLat)) * mapHeight;
-
-  return { x: Math.max(10, Math.min(mapWidth - 10, x)), y: Math.max(10, Math.min(mapHeight - 10, y)) };
+// 장소 선택 → 상세 일정표(일정)에 추가하도록 이벤트 전파.
+// PlannerPage 가 이 이벤트를 받아 일정 추가 모달을 (장소가 채워진 채로) 연다.
+const emitPlaceSelected = (name: string, lat: number, lng: number) => {
+  window.dispatchEvent(
+    new CustomEvent('tripsync_place_selected', { detail: { name, lat, lng } })
+  );
 };
 
-// Places database for search/autocomplete
-const PRESET_PLACES = [
-  { name: '성산일출봉', lat: 33.4586, lng: 126.9426, desc: '제주 서귀포시 성산읍' },
-  { name: '협재해수욕장', lat: 33.3938, lng: 126.2396, desc: '제주 제주시 한림읍' },
-  { name: '한라산 백록담', lat: 33.3617, lng: 126.5292, desc: '제주 제주시 오등동' },
-  { name: '동문재래시장', lat: 33.5126, lng: 126.5284, desc: '제주 제주시 일도일동' },
-  { name: '오설록 티뮤지엄', lat: 33.3059, lng: 126.2894, desc: '제주 서귀포시 안덕면' },
-  { name: '제주국제공항', lat: 33.5104, lng: 126.4913, desc: '제주 제주시 공항로' },
-  { name: '섭지코지', lat: 33.4243, lng: 126.9312, desc: '제주 서귀포시 성산읍' },
-  { name: '천지연폭포', lat: 33.2447, lng: 126.5546, desc: '제주 서귀포시 천지동' },
-  { name: '중문관광단지', lat: 33.2483, lng: 126.4124, desc: '제주 서귀포시 색달동' }
-];
-
 export const KakaoMap: React.FC = () => {
-  const { schedules, activeDayId, participants, currentUser } = usePlannerStore();
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<typeof PRESET_PLACES>([]);
-  const [selectedPlace, setSelectedPlace] = useState<typeof PRESET_PLACES[number] | null>(null);
+  const { schedules, activeDayId, currentUser } = usePlannerStore();
 
-  // Filter and sort active day schedules chronologically by startTime
+  const containerRef = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<any>(null);
+  const placesRef = useRef<any>(null);
+  const geocoderRef = useRef<any>(null);
+  const overlaysRef = useRef<any[]>([]); // 마커/경로선 등 정리 대상
+  const currentUserRef = useRef(currentUser);
+  currentUserRef.current = currentUser;
+
+  const [ready, setReady] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+
+  // 이 일차의 장소가 있는 일정만, 시간순(= 상세 일정표 순서)으로 정렬
   const activeSchedules = schedules
-    .filter(s => s.dayId === activeDayId && s.placeLat && s.placeLng)
+    .filter((s) => s.dayId === activeDayId && s.placeLat && s.placeLng)
     .sort((a, b) => a.startTime.localeCompare(b.startTime));
 
-  // Perform search locally
+  // 지도 초기화 (한 번)
+  useEffect(() => {
+    if (!isKakaoKeySet()) {
+      setError('카카오 지도 키가 설정되지 않았습니다.');
+      return;
+    }
+    let canceled = false;
+    loadKakao()
+      .then((kakao) => {
+        if (canceled || !containerRef.current) return;
+        const map = new kakao.maps.Map(containerRef.current, {
+          center: new kakao.maps.LatLng(33.3617, 126.5292), // 제주 한라산 기준
+          level: 9,
+        });
+        mapRef.current = map;
+        placesRef.current = new kakao.maps.services.Places();
+        geocoderRef.current = new kakao.maps.services.Geocoder();
+
+        // 지도 클릭 → 좌표를 주소로 변환 후 일정 추가 이벤트 전파
+        kakao.maps.event.addListener(map, 'click', (mouseEvent: any) => {
+          if (!currentUserRef.current) return; // 조회 모드
+          const latlng = mouseEvent.latLng;
+          const lat = latlng.getLat();
+          const lng = latlng.getLng();
+          geocoderRef.current.coord2Address(lng, lat, (res: any, status: any) => {
+            let name = '지정한 위치';
+            if (status === kakao.maps.services.Status.OK && res[0]) {
+              name =
+                res[0].road_address?.building_name ||
+                res[0].road_address?.address_name ||
+                res[0].address?.address_name ||
+                name;
+            }
+            emitPlaceSelected(name, lat, lng);
+          });
+        });
+
+        setReady(true);
+      })
+      .catch(() => {
+        setError('지도를 불러오지 못했습니다. 카카오 JS 키와 플랫폼 도메인 등록을 확인해 주세요.');
+      });
+    return () => {
+      canceled = true;
+    };
+  }, []);
+
+  // 일정 변경 시 마커 + 경로선 다시 그림
+  useEffect(() => {
+    const kakao = (window as any).kakao;
+    if (!ready || !kakao || !mapRef.current) return;
+    const map = mapRef.current;
+
+    overlaysRef.current.forEach((o) => o.setMap(null));
+    overlaysRef.current = [];
+
+    const path: any[] = [];
+    activeSchedules.forEach((s) => {
+      const pos = new kakao.maps.LatLng(s.placeLat, s.placeLng);
+      path.push(pos);
+      // 상세 일정표와 동일한 색의 위치 핀
+      const color = getScheduleColor(s.id);
+      const content = document.createElement('div');
+      content.title = s.placeName || '';
+      content.style.cssText = 'line-height:0; filter: drop-shadow(0 2px 2px rgba(15,23,42,0.55));';
+      content.innerHTML = `
+        <svg width="22" height="29" viewBox="0 0 24 32" overflow="visible" style="overflow:visible" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 0 C5.373 0 0 5.373 0 12 c0 8.4 12 20 12 20 s12 -11.6 12 -20 C24 5.373 18.627 0 12 0 Z"
+                fill="${color}" stroke="#0f172a" stroke-width="3"/>
+          <circle cx="12" cy="12" r="4.6" fill="#ffffff" stroke="#0f172a" stroke-width="1"/>
+        </svg>`;
+      // 핀 끝(하단)이 좌표를 가리키도록 앵커
+      const overlay = new kakao.maps.CustomOverlay({
+        position: pos,
+        content,
+        xAnchor: 0.5,
+        yAnchor: 1,
+        zIndex: 5,
+      });
+      overlay.setMap(map);
+      overlaysRef.current.push(overlay);
+    });
+
+    // 상세 일정표 순서대로 이동 경로선
+    if (path.length > 1) {
+      const polyline = new kakao.maps.Polyline({
+        path,
+        strokeWeight: 2.5,
+        strokeColor: '#0f172a',
+        strokeOpacity: 1,
+        strokeStyle: 'shortdash', // 얇고 촘촘한 점선(파선)
+      });
+      polyline.setMap(map);
+      overlaysRef.current.push(polyline);
+    }
+
+    // 장소들이 모두 보이도록 지도 범위 맞춤
+    if (path.length > 0) {
+      const bounds = new kakao.maps.LatLngBounds();
+      path.forEach((p) => bounds.extend(p));
+      map.setBounds(bounds);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, schedules, activeDayId]);
+
+  // 실제 카카오 로컬 키워드 검색
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     const q = e.target.value;
     setSearchQuery(q);
-    
-    if (!q.trim()) {
+    if (!q.trim() || !placesRef.current) {
       setSearchResults([]);
       return;
     }
-
-    const filtered = PRESET_PLACES.filter(place => 
-      place.name.toLowerCase().includes(q.toLowerCase()) || 
-      place.desc.toLowerCase().includes(q.toLowerCase())
-    );
-    setSearchResults(filtered);
+    const kakao = (window as any).kakao;
+    placesRef.current.keywordSearch(q, (data: any[], status: any) => {
+      if (status === kakao.maps.services.Status.OK) {
+        setSearchResults(
+          data.slice(0, 12).map((d) => ({
+            name: d.place_name,
+            addr: d.road_address_name || d.address_name || '',
+            lat: parseFloat(d.y),
+            lng: parseFloat(d.x),
+          }))
+        );
+      } else {
+        setSearchResults([]);
+      }
+    });
   };
 
-  const handleSelectResult = (place: typeof PRESET_PLACES[number]) => {
-    setSelectedPlace(place);
+  const handleSelectResult = (place: SearchResult) => {
     setSearchQuery(place.name);
     setSearchResults([]);
-
-    // Dispatch a custom event to notify the TimeSlotModal if it is open
-    const event = new CustomEvent('tripsync_place_selected', {
-      detail: { name: place.name, lat: place.lat, lng: place.lng }
-    });
-    window.dispatchEvent(event);
+    const kakao = (window as any).kakao;
+    if (mapRef.current && kakao) {
+      mapRef.current.panTo(new kakao.maps.LatLng(place.lat, place.lng));
+    }
+    if (currentUser) emitPlaceSelected(place.name, place.lat, place.lng);
   };
 
-  // Click directly on the mock map to select a place or set custom coordinates
-  const handleMapClick = (e: React.MouseEvent<SVGSVGElement>) => {
-    if (!currentUser) return; // Read-only
-    const rect = e.currentTarget.getBoundingClientRect();
-    const clickX = e.clientX - rect.left;
-    const clickY = e.clientY - rect.top;
-
-    // Reverse conversion back to Lat/Lng approx
-    const minLat = 33.15;
-    const maxLat = 33.58;
-    const minLng = 126.15;
-    const maxLng = 127.0;
-
-    const lng = minLng + (clickX / mapWidth) * (maxLng - minLng);
-    const lat = minLat + ((mapHeight - clickY) / mapHeight) * (maxLat - minLat);
-
-    const customPlace = {
-      name: `지정 위치 (Lat: ${lat.toFixed(3)}, Lng: ${lng.toFixed(3)})`,
-      lat,
-      lng,
-      desc: '사용자 지정 핀'
-    };
-
-    setSelectedPlace(customPlace);
-    setSearchQuery(customPlace.name);
-
-    // Dispatch selection event
-    const event = new CustomEvent('tripsync_place_selected', {
-      detail: { name: customPlace.name, lat, lng }
-    });
-    window.dispatchEvent(event);
-  };
-
-  // Build the route polyline string
-  const getPolylinePoints = () => {
-    return activeSchedules
-      .map(s => {
-        const { x, y } = convertCoordsToXY(s.placeLat!, s.placeLng!);
-        return `${x},${y}`;
-      })
-      .join(' ');
-  };
+  const showMapError = !!error;
 
   return (
     <div style={containerStyle}>
-      {/* Map Header Search */}
+      {/* 검색 */}
       <div style={searchContainerStyle}>
         <div style={searchInputWrapperStyle}>
           <Search size={16} style={searchIconStyle} />
@@ -129,173 +198,71 @@ export const KakaoMap: React.FC = () => {
             style={searchInputStyle}
             value={searchQuery}
             onChange={handleSearch}
-            placeholder={currentUser ? "장소 검색 (예: 성산일출봉)" : "장소 조회 모드"}
-            disabled={!currentUser}
+            placeholder={currentUser ? '장소 검색 (예: 성산일출봉)' : '장소 조회 모드'}
+            disabled={!currentUser || !ready}
           />
         </div>
-        
-        {searchResults.length > 0 && (
-          <div style={searchResultsStyle}>
-            {searchResults.map((place, idx) => (
-              <div 
-                key={idx} 
-                style={resultItemStyle}
-                onClick={() => handleSelectResult(place)}
-              >
-                <MapPin size={14} style={{ color: '#94a3b8' }} />
-                <div>
-                  <div style={resultNameStyle}>{place.name}</div>
-                  <div style={resultDescStyle}>{place.desc}</div>
-                </div>
-              </div>
-            ))}
+      </div>
+
+      {/* 지도 (위) */}
+      <div style={mapWrapperStyle}>
+        <div ref={containerRef} style={mapDivStyle} />
+        {showMapError && (
+          <div style={mapErrorStyle}>
+            <AlertTriangle size={20} color="#f59e0b" />
+            <span style={{ fontWeight: 700 }}>지도를 표시할 수 없습니다</span>
+            <span style={mapErrorDescStyle}>{error}</span>
           </div>
         )}
+        {!ready && !showMapError && <div style={mapLoadingStyle}>지도를 불러오는 중...</div>}
       </div>
 
-      {/* The Visual Mock Map */}
-      <div className="glass-panel" style={mapWrapperStyle}>
-        <svg 
-          width={mapWidth} 
-          height={mapHeight} 
-          style={svgStyle}
-          onClick={handleMapClick}
-        >
-          {/* Grid lines to resemble radar or layout map */}
-          {Array.from({ length: 6 }).map((_, i) => (
-            <line
-              key={`h-${i}`}
-              x1={0}
-              y1={(mapHeight / 6) * i}
-              x2={mapWidth}
-              y2={(mapHeight / 6) * i}
-              stroke="rgba(255, 255, 255, 0.03)"
-              strokeWidth={1}
-            />
+      {/* 검색 결과 목록 (지도 아래) */}
+      {searchResults.length > 0 && (
+        <div style={searchResultsStyle}>
+          {searchResults.map((place, idx) => (
+            <div key={idx} style={resultItemStyle} onClick={() => handleSelectResult(place)}>
+              <MapPin size={14} style={{ color: '#94a3b8', flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={resultNameStyle}>{place.name}</div>
+                <div style={resultDescStyle}>{place.addr}</div>
+              </div>
+              {currentUser && <Plus size={14} style={{ color: '#4f46e5', flexShrink: 0 }} />}
+            </div>
           ))}
-          {Array.from({ length: 8 }).map((_, i) => (
-            <line
-              key={`v-${i}`}
-              x1={(mapWidth / 8) * i}
-              y1={0}
-              x2={(mapWidth / 8) * i}
-              y2={mapHeight}
-              stroke="rgba(255, 255, 255, 0.03)"
-              strokeWidth={1}
-            />
-          ))}
+        </div>
+      )}
 
-          {/* Minimal representation of Jeju Island outline */}
-          <path
-            d="M 40 120 C 60 70, 160 50, 240 60 C 290 70, 310 90, 320 120 C 310 160, 270 180, 220 190 C 150 200, 70 180, 40 120 Z"
-            fill="rgba(255, 255, 255, 0.015)"
-            stroke="rgba(255, 255, 255, 0.06)"
-            strokeWidth={1.5}
-          />
+      {currentUser && ready && (
+        <div style={hintStyle}>
+          <Info size={11} /> 지도를 클릭하거나 검색 결과를 누르면 상세 일정표에 장소를 추가할 수 있어요.
+        </div>
+      )}
 
-          {/* Legend indicator */}
-          <text x={12} y={mapHeight - 12} style={legendStyle}>
-            JEJU MAP PROTOTYPE
-          </text>
-
-          {/* Route path connecting schedules in order */}
-          {activeSchedules.length > 1 && (
-            <polyline
-              points={getPolylinePoints()}
-              fill="none"
-              stroke="#6366f1"
-              strokeWidth={2}
-              strokeDasharray="4 4"
-              style={{ opacity: 0.8 }}
-            />
-          )}
-
-          {/* Markers for schedules */}
-          {activeSchedules.map((schedule, idx) => {
-            const { x, y } = convertCoordsToXY(schedule.placeLat!, schedule.placeLng!);
-            const creator = participants.find(p => p.id === schedule.createdBy);
-            const markerColor = creator?.color || '#6366f1';
-
-            return (
-              <g key={schedule.id}>
-                {/* Marker outer pulse */}
-                <circle
-                  cx={x}
-                  cy={y}
-                  r={12}
-                  fill={markerColor}
-                  fillOpacity={0.15}
-                />
-                {/* Marker body */}
-                <circle
-                  cx={x}
-                  cy={y}
-                  r={7}
-                  fill={markerColor}
-                  stroke="#ffffff"
-                  strokeWidth={1.5}
-                />
-                {/* Index label inside marker */}
-                <text
-                  x={x}
-                  y={y + 3.5}
-                  textAnchor="middle"
-                  style={markerTextStyle}
-                >
-                  {idx + 1}
-                </text>
-              </g>
-            );
-          })}
-
-          {/* Custom selected search pin */}
-          {selectedPlace && (
-            <g>
-              {(() => {
-                const { x, y } = convertCoordsToXY(selectedPlace.lat, selectedPlace.lng);
-                return (
-                  <>
-                    <circle
-                      cx={x}
-                      cy={y}
-                      r={14}
-                      fill="none"
-                      stroke="#10b981"
-                      strokeWidth={1}
-                      strokeDasharray="2 2"
-                    />
-                    <path
-                      d={`M ${x} ${y-10} L ${x-4} ${y-4} L ${x+4} ${y-4} Z`}
-                      fill="#10b981"
-                    />
-                    <circle
-                      cx={x}
-                      cy={y}
-                      r={3}
-                      fill="#10b981"
-                    />
-                  </>
-                );
-              })()}
-            </g>
-          )}
-        </svg>
-      </div>
-
-      {/* Schedule Path Info List */}
+      {/* 경로 분석 (상세 일정표 순서) */}
       <div style={routeInfoContainerStyle}>
         <div style={routeInfoHeaderStyle}>
           <Navigation size={14} style={{ color: '#6366f1' }} />
-          <span style={routeInfoTitleStyle}>경로 분석 ({activeSchedules.length}곳)</span>
+          <span style={routeInfoTitleStyle}>이동 경로 ({activeSchedules.length}곳)</span>
         </div>
         {activeSchedules.length > 0 ? (
           <div style={routeListStyle}>
-            {activeSchedules.map((s, idx) => (
+            {activeSchedules.map((s) => (
               <div key={s.id} style={routeItemStyle}>
-                <div style={routeNumberStyle}>{idx + 1}</div>
-                <div style={{ flex: 1 }}>
+                <svg width="20" height="27" viewBox="0 0 24 32" overflow="visible" style={{ flexShrink: 0, overflow: 'visible' }}>
+                  <path
+                    d="M12 0 C5.373 0 0 5.373 0 12 c0 8.4 12 20 12 20 s12 -11.6 12 -20 C24 5.373 18.627 0 12 0 Z"
+                    fill={getScheduleColor(s.id)}
+                    stroke="#0f172a"
+                    strokeWidth="3"
+                  />
+                  <circle cx="12" cy="12" r="4.6" fill="#ffffff" stroke="#0f172a" strokeWidth="1" />
+                </svg>
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={placeTitleStyle}>{s.placeName}</div>
-                  <div style={placeTimeStyle}>{s.startTime} ~ {s.endTime}</div>
+                  <div style={placeTimeStyle}>
+                    {s.startTime} ~ {s.endTime}
+                  </div>
                 </div>
               </div>
             ))}
@@ -303,7 +270,7 @@ export const KakaoMap: React.FC = () => {
         ) : (
           <div style={noRoutesStyle}>
             <Info size={14} style={{ marginRight: '4px' }} />
-            등록된 일정 장소가 없습니다. 일정에 장소를 추가해 보세요.
+            등록된 일정 장소가 없습니다. 지도를 클릭하거나 검색해서 추가해 보세요.
           </div>
         )}
       </div>
@@ -311,12 +278,12 @@ export const KakaoMap: React.FC = () => {
   );
 };
 
-// Styling definitions
+/* ---- Styles ---- */
 const containerStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   width: '100%',
-  gap: '12px',
+  gap: '10px',
 };
 
 const searchContainerStyle: React.CSSProperties = {
@@ -350,70 +317,95 @@ const searchInputStyle: React.CSSProperties = {
 };
 
 const searchResultsStyle: React.CSSProperties = {
-  position: 'absolute',
-  top: '42px',
-  left: 0,
-  right: 0,
+  marginTop: '8px',
   backgroundColor: '#ffffff',
-  border: '1px solid rgba(15, 23, 42, 0.12)',
+  border: '3px solid #0f172a',
   borderRadius: '8px',
-  zIndex: 10,
-  maxHeight: '180px',
+  boxShadow: '2px 2px 0px #0f172a',
+  maxHeight: '200px',
   overflowY: 'auto',
-  boxShadow: 'var(--shadow-lg)',
 };
 
 const resultItemStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: '10px',
-  padding: '8px 12px',
+  padding: '9px 12px',
   cursor: 'pointer',
-  borderBottom: '1px solid rgba(15, 23, 42, 0.05)',
-  transition: 'background-color 0.15s ease',
+  borderBottom: '1px solid rgba(15, 23, 42, 0.08)',
 };
 
 const resultNameStyle: React.CSSProperties = {
-  fontSize: '0.85rem',
+  fontSize: '0.83rem',
   color: '#0f172a',
-  fontWeight: 500,
+  fontWeight: 600,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
 };
 
 const resultDescStyle: React.CSSProperties = {
-  fontSize: '0.75rem',
+  fontSize: '0.72rem',
   color: '#64748b',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
 };
 
 const mapWrapperStyle: React.CSSProperties = {
+  position: 'relative',
   width: '100%',
-  backgroundColor: 'rgba(15, 23, 42, 0.02)',
-  borderColor: 'rgba(15, 23, 42, 0.08)',
-  borderRadius: '12px',
+  aspectRatio: MAP_ASPECT, // 폭에 맞춰 높이 자동 → 작은/큰 버전 비율 동일
+  border: '2px solid #0f172a',
+  borderRadius: '10px',
   overflow: 'hidden',
+  backgroundColor: '#eef2f6',
+};
+
+const mapDivStyle: React.CSSProperties = {
+  width: '100%',
+  height: '100%',
+  // 카카오 지도 기본 컬러 그대로 (필터 없음)
+};
+
+const mapErrorStyle: React.CSSProperties = {
+  position: 'absolute',
+  inset: 0,
   display: 'flex',
-  justifyContent: 'center',
+  flexDirection: 'column',
   alignItems: 'center',
-  padding: '10px',
+  justifyContent: 'center',
+  gap: '6px',
+  padding: '20px',
+  textAlign: 'center',
+  backgroundColor: '#fffbeb',
+  color: '#0f172a',
+  fontSize: '0.8rem',
 };
 
-const svgStyle: React.CSSProperties = {
-  backgroundColor: 'rgba(15, 23, 42, 0.04)',
-  borderRadius: '8px',
-  cursor: 'crosshair',
+const mapErrorDescStyle: React.CSSProperties = {
+  fontSize: '0.72rem',
+  color: '#64748b',
+  lineHeight: 1.4,
 };
 
-const legendStyle: React.CSSProperties = {
-  fill: '#64748b',
-  fontSize: '0.65rem',
-  fontFamily: 'monospace',
-  fontWeight: 600,
+const mapLoadingStyle: React.CSSProperties = {
+  position: 'absolute',
+  inset: 0,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontSize: '0.8rem',
+  color: '#64748b',
 };
 
-const markerTextStyle: React.CSSProperties = {
-  fill: '#ffffff',
-  fontSize: '0.55rem',
-  fontWeight: 700,
-  fontFamily: 'sans-serif',
+const hintStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '4px',
+  fontSize: '0.68rem',
+  color: '#64748b',
+  lineHeight: 1.3,
 };
 
 const routeInfoContainerStyle: React.CSSProperties = {
@@ -430,17 +422,14 @@ const routeInfoHeaderStyle: React.CSSProperties = {
 
 const routeInfoTitleStyle: React.CSSProperties = {
   fontSize: '0.8rem',
-  fontWeight: 600,
-  color: '#475569',
+  fontWeight: 700,
+  color: '#0f172a',
 };
 
 const routeListStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
-  gap: '6px',
-  maxHeight: '140px',
-  overflowY: 'auto',
-  paddingRight: '4px',
+  gap: '9px',
 };
 
 const routeItemStyle: React.CSSProperties = {
@@ -453,23 +442,13 @@ const routeItemStyle: React.CSSProperties = {
   padding: '8px 10px',
 };
 
-const routeNumberStyle: React.CSSProperties = {
-  width: '18px',
-  height: '18px',
-  borderRadius: '50%',
-  backgroundColor: '#6366f1',
-  color: '#ffffff',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  fontSize: '0.7rem',
-  fontWeight: 700,
-};
-
 const placeTitleStyle: React.CSSProperties = {
   fontSize: '0.8rem',
   color: '#0f172a',
-  fontWeight: 500,
+  fontWeight: 600,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
 };
 
 const placeTimeStyle: React.CSSProperties = {
