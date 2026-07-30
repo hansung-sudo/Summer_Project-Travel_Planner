@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { usePlannerStore } from '../../store/plannerStore';
 import type { Schedule, Participant } from '../../types';
-import { Eye } from 'lucide-react';
+import { Eye, Edit3, Trash2 } from 'lucide-react';
 import { getScheduleColor } from '../../utils/colorUtils';
 
 interface CircularTimetableProps {
@@ -18,7 +18,8 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
     participants,
     currentUser,
     updateSchedule,
-    addSchedule
+    addSchedule,
+    deleteSchedule
   } = usePlannerStore();
 
   // SVG parameters (지름 size에 비례해 스케일)
@@ -92,6 +93,12 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
   const [dragToCreate, setDragToCreate] = useState<{
     startHour: number;
     currentHour: number;
+  } | null>(null);
+
+  const [selectedScheduleMenu, setSelectedScheduleMenu] = useState<{
+    schedule: Schedule;
+    x: number;
+    y: number;
   } | null>(null);
 
   useEffect(() => {
@@ -264,6 +271,9 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
     if (!svgRef.current) return;
     e.preventDefault();
 
+    // Close menu if open
+    setSelectedScheduleMenu(null);
+
     // Get click coordinates relative to SVG
     const rect = svgRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left - cx;
@@ -326,7 +336,11 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
       });
 
       if (clickedSched) {
-        onEditSlot(clickedSched);
+        setSelectedScheduleMenu({
+          schedule: clickedSched,
+          x: e.clientX - rect.left,
+          y: e.clientY - rect.top,
+        });
         return;
       }
 
@@ -543,7 +557,7 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
         </svg>
 
         {/* Hover Tooltip */}
-        {hoveredSchedule && (
+        {hoveredSchedule && !selectedScheduleMenu && (
           <div
             style={{
               ...tooltipStyle,
@@ -566,6 +580,102 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
             )}
             <div style={tooltipCreatorStyle}>
               작성자: {getCreator(hoveredSchedule.createdBy)?.name || '알수없음'}
+            </div>
+          </div>
+        )}
+
+        {/* Schedule Action Menu Popover (수정하기 / 삭제하기) */}
+        {selectedScheduleMenu && (
+          <div
+            style={{
+              position: 'absolute',
+              left: `${Math.min(size - 190, Math.max(10, selectedScheduleMenu.x - 95))}px`,
+              top: `${Math.min(size - 120, Math.max(10, selectedScheduleMenu.y - 45))}px`,
+              backgroundColor: '#ffffff',
+              border: '3px solid #0f172a',
+              borderRadius: '12px',
+              padding: '12px',
+              zIndex: 1000,
+              boxShadow: '6px 6px 0px #0f172a',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '8px',
+              minWidth: '190px',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #e2e8f0', paddingBottom: '6px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: getScheduleColor(selectedScheduleMenu.schedule.id) }} />
+                <strong style={{ fontSize: '0.825rem', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '130px' }}>
+                  {selectedScheduleMenu.schedule.placeName || '(장소 미정)'}
+                </strong>
+              </div>
+              <button
+                onClick={() => setSelectedScheduleMenu(null)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: '0.8rem', padding: '0 2px', fontWeight: 700 }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ fontSize: '0.725rem', color: '#64748b', fontFamily: 'monospace' }}>
+              시간: {selectedScheduleMenu.schedule.startTime} - {selectedScheduleMenu.schedule.endTime}
+            </div>
+
+            <div style={{ display: 'flex', gap: '8px', marginTop: '4px' }}>
+              <button
+                onClick={() => {
+                  const sched = selectedScheduleMenu.schedule;
+                  setSelectedScheduleMenu(null);
+                  onEditSlot(sched);
+                }}
+                style={{
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '4px',
+                  padding: '6px 8px',
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  color: '#0f172a',
+                  backgroundColor: '#ffffff',
+                  border: '2px solid #0f172a',
+                  borderRadius: '6px',
+                  boxShadow: '2px 2px 0px #0f172a',
+                  cursor: 'pointer',
+                }}
+              >
+                <Edit3 size={12} />
+                수정하기
+              </button>
+
+              <button
+                onClick={() => {
+                  deleteSchedule(selectedScheduleMenu.schedule.id);
+                  setSelectedScheduleMenu(null);
+                }}
+                style={{
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '4px',
+                  padding: '6px 8px',
+                  fontSize: '0.75rem',
+                  fontWeight: 700,
+                  color: '#ffffff',
+                  backgroundColor: '#ef4444',
+                  border: '2px solid #0f172a',
+                  borderRadius: '6px',
+                  boxShadow: '2px 2px 0px #0f172a',
+                  cursor: 'pointer',
+                }}
+              >
+                <Trash2 size={12} />
+                삭제하기
+              </button>
             </div>
           </div>
         )}
