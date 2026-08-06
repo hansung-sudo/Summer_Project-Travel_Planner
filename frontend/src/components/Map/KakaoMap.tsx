@@ -41,7 +41,12 @@ export const KakaoMap: React.FC = () => {
 
   // 이 일차의 장소가 있는 일정만, 시간순(= 상세 일정표 순서)으로 정렬
   const activeSchedules = schedules
-    .filter((s) => s.dayId === activeDayId && s.placeLat && s.placeLng)
+    .filter(
+      (s) =>
+        s.dayId === activeDayId &&
+        s.placeLat != null &&
+        s.placeLng != null
+    )
     .sort((a, b) => a.startTime.localeCompare(b.startTime));
 
   // 지도 초기화 (한 번)

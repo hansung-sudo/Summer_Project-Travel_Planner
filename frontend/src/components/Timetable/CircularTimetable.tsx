@@ -1,14 +1,20 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useCallback, useState, useRef, useEffect } from 'react';
 import { usePlannerStore } from '../../store/plannerStore';
 import type { Schedule, Participant } from '../../types';
 import { Eye } from 'lucide-react';
 import { getScheduleColor } from '../../utils/colorUtils';
+import { getRequestErrorMessage } from '../../api/client';
 
 interface CircularTimetableProps {
   onAddSlot: (startTime: string, endTime: string) => void;
   onEditSlot: (schedule: Schedule) => void;
   size?: number; // 시계 지름(px). 좁은 슬롯에서는 작게 전달.
 }
+
+const timeToDecimal = (time: string): number => {
+  const [hours, minutes] = time.split(':').map(Number);
+  return hours + minutes / 60;
+};
 
 export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot, onEditSlot, size = 380 }) => {
   const { 
@@ -27,15 +33,31 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
   const rOuter = size * 0.382;
   const rInner = size * 0.25;
 
+  const [hoveredSchedule, setHoveredSchedule] = useState<Schedule | null>(null);
+  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [activeDrag, setActiveDrag] = useState<{
+    scheduleId: string;
+    type: 'start' | 'end';
+  } | null>(null);
+  const [dragPreview, setDragPreview] = useState<Schedule | null>(null);
+  const [dragToCreate, setDragToCreate] = useState<{
+    startHour: number;
+    currentHour: number;
+  } | null>(null);
+
   // Filter schedules for the current active day
-  const activeSchedules = schedules.filter(s => s.dayId === activeDayId);
+  const storedActiveSchedules = schedules.filter(s => s.dayId === activeDayId);
 
   // Helper to find the nearest occupied intervals around a targetHour
-  const getFreeInterval = (targetHour: number) => {
+  const getFreeInterval = useCallback((targetHour: number) => {
     let minAllowed = 0;
     let maxAllowed = 24;
+    const relevantSchedules = schedules
+      .filter((schedule) => schedule.dayId === activeDayId)
+      .map((schedule) => dragPreview?.id === schedule.id ? dragPreview : schedule);
 
-    activeSchedules.forEach(s => {
+    relevantSchedules.forEach(s => {
       const start = timeToDecimal(s.startTime);
       let end = timeToDecimal(s.endTime);
       if (end < start) end = 24; // Treat 00:00 end as 24:00
@@ -49,20 +71,23 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
     });
 
     return { minAllowed, maxAllowed };
-  };
+  }, [activeDayId, dragPreview, schedules]);
 
-  const getResizingInterval = (scheduleId: string) => {
+  const getResizingInterval = useCallback((scheduleId: string) => {
     let minAllowed = 0;
     let maxAllowed = 24;
+    const relevantSchedules = schedules
+      .filter((schedule) => schedule.dayId === activeDayId)
+      .map((schedule) => dragPreview?.id === schedule.id ? dragPreview : schedule);
 
-    const targetSched = activeSchedules.find(s => s.id === scheduleId);
+    const targetSched = relevantSchedules.find(s => s.id === scheduleId);
     if (!targetSched) return { minAllowed, maxAllowed };
 
     const targetStart = timeToDecimal(targetSched.startTime);
     let targetEnd = timeToDecimal(targetSched.endTime);
     if (targetEnd < targetStart) targetEnd = 24; // Treat 00:00 end as 24:00
 
-    activeSchedules.forEach(s => {
+    relevantSchedules.forEach(s => {
       if (s.id === scheduleId) return;
 
       const start = timeToDecimal(s.startTime);
@@ -78,21 +103,11 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
     });
 
     return { minAllowed, maxAllowed };
-  };
+  }, [activeDayId, dragPreview, schedules]);
 
-  const [hoveredSchedule, setHoveredSchedule] = useState<Schedule | null>(null);
-  const [tooltipPos, setTooltipPos] = useState({ x: 0, y: 0 });
-  const svgRef = useRef<SVGSVGElement>(null);
-
-  const [activeDrag, setActiveDrag] = useState<{
-    scheduleId: string;
-    type: 'start' | 'end';
-  } | null>(null);
-
-  const [dragToCreate, setDragToCreate] = useState<{
-    startHour: number;
-    currentHour: number;
-  } | null>(null);
+  const activeSchedules = storedActiveSchedules.map((schedule) =>
+    dragPreview?.id === schedule.id ? dragPreview : schedule
+  );
 
   useEffect(() => {
     if (!activeDrag && !dragToCreate) return;
@@ -114,26 +129,35 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
       if (decimalHour >= 24) decimalHour -= 24;
 
       if (activeDrag) {
-        const schedule = schedules.find(s => s.id === activeDrag.scheduleId);
+        const schedule = dragPreview?.id === activeDrag.scheduleId
+          ? dragPreview
+          : schedules.find(s => s.id === activeDrag.scheduleId);
         if (!schedule) return;
 
         const { minAllowed, maxAllowed } = getResizingInterval(activeDrag.scheduleId);
 
         if (activeDrag.type === 'start') {
-          const endDec = timeToDecimal(schedule.endTime);
+          let endDec = timeToDecimal(schedule.endTime);
+          if (endDec <= timeToDecimal(schedule.startTime)) endDec += 24;
           // Clamp start between minAllowed and endDec - 1
-          const clampedHour = Math.max(minAllowed, Math.min(endDec - 1, decimalHour));
+          const clampedHour = Math.max(
+            minAllowed,
+            Math.min(23, endDec - 1, decimalHour)
+          );
           const timeStr = `${clampedHour.toString().padStart(2, '0')}:00`;
-          updateSchedule({
+          setDragPreview({
             ...schedule,
             startTime: timeStr,
           });
         } else {
           const startDec = timeToDecimal(schedule.startTime);
+          const adjustedHour = decimalHour <= startDec ? decimalHour + 24 : decimalHour;
           // Clamp end between startDec + 1 and maxAllowed
-          const clampedHour = Math.max(startDec + 1, Math.min(maxAllowed, decimalHour));
-          const timeStr = `${clampedHour.toString().padStart(2, '0')}:00`;
-          updateSchedule({
+          const clampedHour = Math.max(startDec + 1, Math.min(maxAllowed, adjustedHour));
+          const timeStr = clampedHour === 24
+            ? '00:00'
+            : `${clampedHour.toString().padStart(2, '0')}:00`;
+          setDragPreview({
             ...schedule,
             endTime: timeStr,
           });
@@ -155,6 +179,18 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
     };
 
     const handleMouseUp = () => {
+      if (activeDrag && dragPreview) {
+        const preview = dragPreview;
+        const patch = activeDrag.type === 'start'
+          ? { startTime: preview.startTime }
+          : { endTime: preview.endTime };
+        void updateSchedule(preview.id, patch)
+          .catch((error) => alert(getRequestErrorMessage(error)))
+          .finally(() => {
+            setDragPreview((current) => current?.id === preview.id ? null : current);
+          });
+      }
+
       if (dragToCreate) {
         let start = Math.min(dragToCreate.startHour, dragToCreate.currentHour);
         let end = Math.max(dragToCreate.startHour, dragToCreate.currentHour);
@@ -188,12 +224,14 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
           const endHour = Math.floor(end);
           const endTimeStr = endHour === 24 || endHour === 0 ? "00:00" : `${endHour.toString().padStart(2, '0')}:00`;
 
-          addSchedule({
+          void addSchedule({
             startTime: startTimeStr,
             endTime: endTimeStr,
-            placeName: '',
-            content: '',
-          });
+            placeName: null,
+            placeLat: null,
+            placeLng: null,
+            content: null,
+          }).catch((error) => alert(getRequestErrorMessage(error)));
         }
 
         setDragToCreate(null);
@@ -207,7 +245,19 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [activeDrag, dragToCreate, schedules, cx, cy, addSchedule, activeSchedules]);
+  }, [
+    activeDrag,
+    dragToCreate,
+    dragPreview,
+    schedules,
+    cx,
+    cy,
+    addSchedule,
+    updateSchedule,
+    activeSchedules,
+    getFreeInterval,
+    getResizingInterval,
+  ]);
 
   // Helper to convert decimal hour (0-24) to angles (degrees, starting from -90 deg at top)
   const hourToAngle = (hour: number) => {
@@ -247,12 +297,6 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
   };
 
 
-
-  // Helper to parse time string "HH:MM" to decimal
-  const timeToDecimal = (timeStr: string) => {
-    const [h, m] = timeStr.split(':').map(Number);
-    return h + m / 60;
-  };
 
   // Handle mouse down on SVG clock to start dragging to create or edit
   const handleSvgMouseDown = (e: React.MouseEvent<SVGSVGElement>) => {
@@ -470,6 +514,7 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
                       onMouseDown={(e) => {
                         e.stopPropagation();
                         e.preventDefault();
+                        setDragPreview(schedule);
                         setActiveDrag({ scheduleId: schedule.id, type: 'start' });
                       }}
                     />
@@ -485,6 +530,7 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
                       onMouseDown={(e) => {
                         e.stopPropagation();
                         e.preventDefault();
+                        setDragPreview(schedule);
                         setActiveDrag({ scheduleId: schedule.id, type: 'end' });
                       }}
                     />

@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { usePlannerStore } from '../../store/plannerStore';
-import type { Schedule } from '../../types';
+import type { CreateScheduleInput, Schedule } from '../../types';
 import { loadKakao } from '../../utils/kakaoLoader';
 import { isKakaoKeySet } from '../../config/kakao';
 import { Save, Trash2, X, MapPin, Search } from 'lucide-react';
+import { getRequestErrorMessage } from '../../api/client';
 
 interface PlaceResult {
   name: string;
@@ -41,9 +42,10 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
   const [endMin, setEndMin] = useState('00');
   
   const [placeName, setPlaceName] = useState('');
-  const [placeLat, setPlaceLat] = useState<number | undefined>(undefined);
-  const [placeLng, setPlaceLng] = useState<number | undefined>(undefined);
+  const [placeLat, setPlaceLat] = useState<number | null>(null);
+  const [placeLng, setPlaceLng] = useState<number | null>(null);
   const [content, setContent] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // 카카오 장소 검색 (좌표 등록용)
   const [placeResults, setPlaceResults] = useState<PlaceResult[]>([]);
@@ -64,6 +66,8 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
 
   const handlePlaceSearch = (value: string) => {
     setPlaceName(value);
+    setPlaceLat(null);
+    setPlaceLng(null);
     if (!value.trim() || !placesRef.current) {
       setPlaceResults([]);
       return;
@@ -127,8 +131,8 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
       setContent(schedule.content || '');
     } else {
       setPlaceName(defaultPlace?.name || '');
-      setPlaceLat(defaultPlace?.lat);
-      setPlaceLng(defaultPlace?.lng);
+      setPlaceLat(defaultPlace?.lat ?? null);
+      setPlaceLng(defaultPlace?.lng ?? null);
       setContent('');
     }
     setPlaceResults([]);
@@ -149,40 +153,51 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
     };
   }, []);
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
 
     const finalEndTime = endHour === '24' ? '00:00' : `${endHour}:${endMin}`;
 
-    if (startTime >= finalEndTime && finalEndTime !== '00:00') {
-      alert('종료 시간은 시작 시간보다 늦어야 합니다.');
+    if (startTime === finalEndTime) {
+      alert('시작 시간과 종료 시간은 달라야 합니다.');
       return;
     }
 
-    const data = {
+    const data: CreateScheduleInput = {
       startTime,
       endTime: finalEndTime,
-      placeName: placeName.trim() || undefined,
+      placeName: placeName.trim() || null,
       placeLat,
       placeLng,
-      content: content.trim() || undefined,
+      content: content.trim() || null,
     };
 
-    if (schedule) {
-      updateSchedule({
-        ...schedule,
-        ...data,
-      });
-    } else {
-      addSchedule(data);
+    setIsSubmitting(true);
+    try {
+      if (schedule) {
+        await updateSchedule(schedule.id, data);
+      } else {
+        await addSchedule(data);
+      }
+      onClose();
+    } catch (error) {
+      alert(getRequestErrorMessage(error));
+    } finally {
+      setIsSubmitting(false);
     }
-    onClose();
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (schedule && window.confirm('이 일정을 삭제하시겠습니까?')) {
-      deleteSchedule(schedule.id);
-      onClose();
+      setIsSubmitting(true);
+      try {
+        await deleteSchedule(schedule.id);
+        onClose();
+      } catch (error) {
+        alert(getRequestErrorMessage(error));
+      } finally {
+        setIsSubmitting(false);
+      }
     }
   };
 
@@ -278,8 +293,9 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
                 value={placeName}
                 onChange={(e) => handlePlaceSearch(e.target.value)}
                 placeholder="장소 검색 (예: 성산일출봉) 또는 직접 입력"
+                maxLength={100}
               />
-              {placeLat && placeLng && (
+              {placeLat != null && placeLng != null && (
                 <div style={coordBadgeStyle}>
                   <MapPin size={12} />
                   <span>좌표 등록됨</span>
@@ -311,6 +327,7 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
               onChange={(e) => setContent(e.target.value)}
               placeholder="예: 맛집 방문, 사진 찍기 등 메모"
               rows={3}
+              maxLength={1000}
             />
           </div>
 
@@ -320,7 +337,8 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
                 type="button"
                 className="btn btn-secondary"
                 style={deleteBtnStyleFull}
-                onClick={handleDelete}
+                onClick={() => void handleDelete()}
+                disabled={isSubmitting}
               >
                 <Trash2 size={16} color="#ef4444" />
                 삭제
@@ -331,9 +349,10 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
               type="submit" 
               className="btn btn-primary" 
               style={{ ...saveBtnStyle, marginLeft: 'auto' }}
+              disabled={isSubmitting}
             >
               <Save size={16} />
-              {schedule ? '수정 완료' : '추가하기'}
+              {isSubmitting ? '저장 중...' : schedule ? '수정 완료' : '추가하기'}
             </button>
           </div>
         </form>

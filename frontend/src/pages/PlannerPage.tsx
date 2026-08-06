@@ -8,6 +8,7 @@ import { LoginForm } from '../components/Auth/LoginForm';
 import { SplitCalculator } from '../components/Split/SplitCalculator';
 import type { Schedule } from '../types';
 import { getScheduleColor } from '../utils/colorUtils';
+import { getRequestErrorMessage } from '../api/client';
 import {
   Share2, LogIn, LogOut, Plus, Trash2, Calendar, User,
   MapPin, Clock, Edit3, ShieldAlert, ArrowLeft, ArrowLeftRight
@@ -30,6 +31,7 @@ export const PlannerPage: React.FC<PlannerPageProps> = ({ shareCode, onGoBack })
     addDay,
     deletePlanner,
     loadPlanner,
+    unloadPlanner,
   } = usePlannerStore();
 
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -62,12 +64,17 @@ export const PlannerPage: React.FC<PlannerPageProps> = ({ shareCode, onGoBack })
 
   // Load planner when shareCode changes
   useEffect(() => {
-    const success = loadPlanner(shareCode);
-    if (!success) {
-      alert('유효하지 않거나 삭제된 플래너 코드입니다.');
+    let canceled = false;
+    void loadPlanner(shareCode).then((success) => {
+      if (canceled || success) return;
+      alert(usePlannerStore.getState().error || '플래너를 불러올 수 없습니다.');
       onGoBack();
-    }
-  }, [shareCode]);
+    });
+    return () => {
+      canceled = true;
+      unloadPlanner();
+    };
+  }, [shareCode, loadPlanner, onGoBack, unloadPlanner]);
 
   // Prompt login if no user is logged in yet
   useEffect(() => {
@@ -105,6 +112,7 @@ export const PlannerPage: React.FC<PlannerPageProps> = ({ shareCode, onGoBack })
   }
 
   const handleShare = () => {
+    if (participants.length === 0) return;
     const shareUrl = `${window.location.origin}${window.location.pathname}?planner=${shareCode}`;
     navigator.clipboard.writeText(shareUrl).then(() => {
       setCopied(true);
@@ -133,9 +141,21 @@ export const PlannerPage: React.FC<PlannerPageProps> = ({ shareCode, onGoBack })
     setShowSlotModal(true);
   };
 
-  const handleDeletePlanner = () => {
-    deletePlanner();
-    setShowDeleteConfirm(false);
+  const handleAddDay = async () => {
+    try {
+      await addDay();
+    } catch (error) {
+      alert(getRequestErrorMessage(error));
+    }
+  };
+
+  const handleDeletePlanner = async () => {
+    try {
+      await deletePlanner();
+      setShowDeleteConfirm(false);
+    } catch (error) {
+      alert(getRequestErrorMessage(error));
+    }
   };
 
   // 시간표 패널 / 지도 패널을 변수로 정의해 두 슬롯(중앙 큰 영역 · 우측 작은 영역) 간 스왑
@@ -242,7 +262,13 @@ export const PlannerPage: React.FC<PlannerPageProps> = ({ shareCode, onGoBack })
             {swapPanels ? '시간표 크게' : '지도 크게'}
           </button>
 
-          <button onClick={handleShare} className="btn btn-secondary" style={actionBtnStyle}>
+          <button
+            onClick={handleShare}
+            className="btn btn-secondary"
+            style={actionBtnStyle}
+            disabled={participants.length === 0}
+            title={participants.length === 0 ? '첫 참여 후 공유할 수 있습니다.' : '공유 링크 복사'}
+          >
             <Share2 size={14} />
             {copied ? '복사 완료!' : '공유 링크 복사'}
           </button>
@@ -288,7 +314,7 @@ export const PlannerPage: React.FC<PlannerPageProps> = ({ shareCode, onGoBack })
                 </button>
               ))}
               {currentUser ? (
-                <button onClick={addDay} className="btn btn-secondary" style={addDayBtnStyle}>
+                <button onClick={() => void handleAddDay()} className="btn btn-secondary" style={addDayBtnStyle}>
                   <Plus size={14} />
                   일차 추가
                 </button>
@@ -338,7 +364,10 @@ export const PlannerPage: React.FC<PlannerPageProps> = ({ shareCode, onGoBack })
 
       {/* Login Modal */}
       {showLoginModal && (
-        <LoginForm onClose={() => setShowLoginModal(false)} />
+        <LoginForm
+          onClose={() => setShowLoginModal(false)}
+          allowViewMode={participants.length > 0}
+        />
       )}
 
       {/* Add / Edit Time Slot Modal */}
@@ -361,7 +390,7 @@ export const PlannerPage: React.FC<PlannerPageProps> = ({ shareCode, onGoBack })
           <div className="glass-panel" style={modalContentStyle}>
             <h3 style={modalTitleStyle}>플래너 삭제 확인</h3>
             <p style={modalDescStyle}>
-              정말로 이 플래너를 삭제하시겠습니까? 이 작업은 되돌릴 수 없으며, 모든 일정, 채팅 기록, 참여자 정보가 영구히 소멸됩니다.
+              정말로 이 플래너를 삭제하시겠습니까? 삭제 후에는 더 이상 조회하거나 편집할 수 없습니다.
             </p>
             <div style={modalButtonGroupStyle}>
               <button
@@ -372,7 +401,7 @@ export const PlannerPage: React.FC<PlannerPageProps> = ({ shareCode, onGoBack })
                 취소
               </button>
               <button
-                onClick={handleDeletePlanner}
+                onClick={() => void handleDeletePlanner()}
                 className="btn btn-primary"
                 style={{ ...modalBtnStyle, background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)', boxShadow: '0 4px 12px rgba(239, 68, 68, 0.3)' }}
               >

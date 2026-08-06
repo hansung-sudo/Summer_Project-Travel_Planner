@@ -5,10 +5,10 @@
 - 기준 명세: `docs/API_SPEC.md` v0.2
 - REST API 9개와 Socket 이벤트 7개 구현 완료
 - 기존 Prisma 모델 유지
-- 현재 화면은 `plannerStore.ts`의 localStorage mock으로 동작
-- 정산 계산기의 localStorage는 유지
+- REST·Socket 기반 화면 연결 코드 적용 완료
+- 플래너 mock localStorage 제거, 정산 계산기의 localStorage만 유지
 
-백엔드 코딩 범위는 완료됐다. 실제 MySQL 통합 테스트와 화면 연결은 아직
+백엔드와 화면의 구현 범위는 완료됐다. 실제 MySQL을 사용한 통합 검증은 아직
 완료되지 않았다.
 
 ## 2. 실행 설정
@@ -171,8 +171,9 @@ sendMessage(content): Promise<void>
 - 백엔드 production dependency 취약점 0건
 - 실제 MySQL이 없어 DB E2E 미수행
 - 자동화된 API·Socket 통합 테스트 미작성
-- 프론트 `node_modules`가 불완전하여 현재 build 불가
-- 프론트 lockfile의 `socket.io-parser` 4.2.6 취약점 정리 필요
+- 프론트 lint와 production build 통과
+- 프론트 production dependency 취약점 0건
+- 현재 Node.js 20.18.0은 Vite 권장 최소 버전 20.19보다 낮으므로 실행 환경 업데이트 필요
 
 개발 seed는 기존 데이터를 모두 삭제하므로 공유·운영 DB에서 실행하지 않는다.
 로컬 seed 값은 공유 코드 `A1B2C3`, 사용자 `민수` 또는 `철수`, 비밀번호

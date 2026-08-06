@@ -3,17 +3,20 @@ export interface Planner {
   title: string;
   shareCode: string;
   isDeleted: boolean;
-  deletedAt?: string;
+  deletedAt: string | null;
   createdAt: string;
 }
 
-export interface Participant {
+export interface ParticipantDto {
   id: string;
   plannerId: string;
   name: string;
   role: 'owner' | 'member';
-  color: string; // Used to color-code schedule entries in the circular timetable
   joinedAt: string;
+}
+
+export interface Participant extends ParticipantDto {
+  color: string;
 }
 
 export interface Day {
@@ -26,13 +29,13 @@ export interface Day {
 export interface Schedule {
   id: string;
   dayId: string;
-  startTime: string; // "HH:MM"
-  endTime: string;   // "HH:MM"
-  placeName?: string;
-  placeLat?: number;
-  placeLng?: number;
-  content?: string;
-  createdBy: string; // Participant.id
+  startTime: string;
+  endTime: string;
+  placeName: string | null;
+  placeLat: number | null;
+  placeLng: number | null;
+  content: string | null;
+  createdBy: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -44,4 +47,43 @@ export interface Message {
   participantName: string;
   content: string;
   createdAt: string;
+}
+
+export interface PlannerSnapshot {
+  planner: Planner;
+  participants: ParticipantDto[];
+  days: Day[];
+  schedules: Schedule[];
+  messages: Message[];
+}
+
+export interface CreateScheduleInput {
+  startTime: string;
+  endTime: string;
+  placeName?: string | null;
+  placeLat?: number | null;
+  placeLng?: number | null;
+  content?: string | null;
+}
+
+export type UpdateScheduleInput = Partial<CreateScheduleInput>;
+
+export interface ApiResponse<T> {
+  success: true;
+  data: T;
+  message: string;
+}
+
+export interface ApiErrorResponse {
+  success: false;
+  data: null;
+  message: string;
+  code: string;
+  details?: unknown;
+}
+
+export interface SocketAck {
+  success: boolean;
+  message?: string;
+  code?: string;
 }
