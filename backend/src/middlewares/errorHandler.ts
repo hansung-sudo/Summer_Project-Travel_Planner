@@ -1,18 +1,50 @@
-import { Request, Response, NextFunction } from 'express';
+import { Prisma } from '@prisma/client';
+import type { NextFunction, Request, Response } from 'express';
+import { AppError } from '../utils/appError';
 
 export const errorHandler = (
-  err: any,
-  req: Request,
+  err: unknown,
+  _req: Request,
   res: Response,
-  next: NextFunction
-) => {
-  console.error('백엔드 에러 발생:', err.message || err);
+  _next: NextFunction
+): void => {
+  if (err instanceof AppError) {
+    res.status(err.statusCode).json({
+      success: false,
+      data: null,
+      message: err.message,
+      code: err.code,
+      ...(err.details === undefined ? {} : { details: err.details }),
+    });
+    return;
+  }
 
-  const statusCode = err.statusCode || 500;
+  if (err instanceof Prisma.PrismaClientKnownRequestError) {
+    if (err.code === 'P2025') {
+      res.status(404).json({
+        success: false,
+        data: null,
+        message: '요청한 데이터를 찾을 수 없습니다.',
+        code: 'RESOURCE_NOT_FOUND',
+      });
+      return;
+    }
 
-  res.status(statusCode).json({
+    console.error('Unhandled Prisma error:', err);
+    res.status(500).json({
+      success: false,
+      data: null,
+      message: '데이터 처리 중 오류가 발생했습니다.',
+      code: 'INTERNAL_SERVER_ERROR',
+    });
+    return;
+  }
+
+  console.error('Unhandled backend error:', err);
+  res.status(500).json({
     success: false,
     data: null,
-    message: err.message || '서버 내부 오류가 발생했습니다.',
+    message: '서버 내부 오류가 발생했습니다.',
+    code: 'INTERNAL_SERVER_ERROR',
   });
 };

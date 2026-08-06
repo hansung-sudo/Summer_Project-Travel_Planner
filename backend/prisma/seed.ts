@@ -1,5 +1,6 @@
 // 더미 데이터 (UI 생성, API 테스트 목적)
 import { PrismaClient, Role } from '@prisma/client';
+import bcrypt from 'bcryptjs';
 
 const prisma = new PrismaClient();
 
@@ -10,6 +11,7 @@ function createTime(hours: number, minutes: number): Date {
 
 async function main() {
   console.log('더미 데이터 삽입 시작...');
+  const passwordHash = await bcrypt.hash('1234', 10);
 
   // 1. 기존 데이터 초기화 (충돌 방지용)
   await prisma.message.deleteMany();
@@ -22,7 +24,7 @@ async function main() {
   const planner = await prisma.planner.create({
     data: {
       title: '제주도 여행 계획',
-      share_code: 'a1b2c3d4-1234-5678-1234-abcd1234efgh', // 36글자 UUID 샘플
+      share_code: 'A1B2C3',
     },
   });
 
@@ -31,7 +33,7 @@ async function main() {
     data: {
       planner_id: planner.id,
       name: '민수',
-      password_hash: '$2b$10$eImiTXuWVxfM37...', // bcrypt 해시값 샘플
+      password_hash: passwordHash,
       role: Role.owner, // 방장
     },
   });
@@ -40,7 +42,7 @@ async function main() {
     data: {
       planner_id: planner.id,
       name: '철수',
-      password_hash: '$2b$10$eImiTXuWVxfM37...',
+      password_hash: passwordHash,
       role: Role.member, // 일반 참여자
     },
   });
