@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { usePlannerStore } from '../../store/plannerStore';
 import { ChatMessage } from './ChatMessage';
 import { Send, MessageSquare, Minimize2 } from 'lucide-react';
+import { getRequestErrorMessage } from '../../api/client';
 
 export const ChatWindow: React.FC = () => {
   const { 
@@ -13,6 +14,7 @@ export const ChatWindow: React.FC = () => {
 
   const [input, setInput] = useState('');
   const [isMinimized, setIsMinimized] = useState(false);
+  const [isSending, setIsSending] = useState(false);
   
   // Dragging state
   const [position, setPosition] = useState({ x: 0, y: 0 });
@@ -84,11 +86,18 @@ export const ChatWindow: React.FC = () => {
     };
   }, [isDragging, isMinimized]);
 
-  const handleSend = (e: React.FormEvent) => {
+  const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || !currentUser) return;
-    sendMessage(input.trim());
-    setInput('');
+    if (!input.trim() || !currentUser || isSending) return;
+    setIsSending(true);
+    try {
+      await sendMessage(input.trim());
+      setInput('');
+    } catch (error) {
+      alert(getRequestErrorMessage(error));
+    } finally {
+      setIsSending(false);
+    }
   };
 
 
@@ -183,7 +192,12 @@ export const ChatWindow: React.FC = () => {
               placeholder="메시지를 입력하세요..."
               maxLength={200}
             />
-            <button type="submit" className="btn btn-primary" style={sendBtnStyle}>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              style={sendBtnStyle}
+              disabled={isSending}
+            >
               <Send size={14} />
             </button>
           </div>

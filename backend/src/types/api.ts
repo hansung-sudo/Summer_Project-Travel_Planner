@@ -1,4 +1,12 @@
-export interface Planner {
+export type ParticipantRole = 'owner' | 'member';
+
+export interface AuthContext {
+  participantId: string;
+  plannerId: string;
+  role: ParticipantRole;
+}
+
+export interface PlannerDto {
   id: string;
   title: string;
   shareCode: string;
@@ -11,22 +19,18 @@ export interface ParticipantDto {
   id: string;
   plannerId: string;
   name: string;
-  role: 'owner' | 'member';
+  role: ParticipantRole;
   joinedAt: string;
 }
 
-export interface Participant extends ParticipantDto {
-  color: string;
-}
-
-export interface Day {
+export interface DayDto {
   id: string;
   plannerId: string;
   dayNumber: number;
   label: string;
 }
 
-export interface Schedule {
+export interface ScheduleDto {
   id: string;
   dayId: string;
   startTime: string;
@@ -40,7 +44,7 @@ export interface Schedule {
   updatedAt: string;
 }
 
-export interface Message {
+export interface MessageDto {
   id: string;
   plannerId: string;
   participantId: string;
@@ -49,37 +53,12 @@ export interface Message {
   createdAt: string;
 }
 
-export interface PlannerSnapshot {
-  planner: Planner;
+export interface PlannerSnapshotDto {
+  planner: PlannerDto;
   participants: ParticipantDto[];
-  days: Day[];
-  schedules: Schedule[];
-  messages: Message[];
-}
-
-export interface CreateScheduleInput {
-  startTime: string;
-  endTime: string;
-  placeName?: string | null;
-  placeLat?: number | null;
-  placeLng?: number | null;
-  content?: string | null;
-}
-
-export type UpdateScheduleInput = Partial<CreateScheduleInput>;
-
-export interface ApiResponse<T> {
-  success: true;
-  data: T;
-  message: string;
-}
-
-export interface ApiErrorResponse {
-  success: false;
-  data: null;
-  message: string;
-  code: string;
-  details?: unknown;
+  days: DayDto[];
+  schedules: ScheduleDto[];
+  messages: MessageDto[];
 }
 
 export interface SocketAck {
