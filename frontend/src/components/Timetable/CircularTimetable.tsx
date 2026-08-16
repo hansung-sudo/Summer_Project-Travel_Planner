@@ -24,7 +24,6 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
     participants,
     currentUser,
     updateSchedule,
-    addSchedule,
     deleteSchedule
   } = usePlannerStore();
 
@@ -237,14 +236,7 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
           const endHour = Math.floor(end);
           const endTimeStr = endHour === 24 || endHour === 0 ? "00:00" : `${endHour.toString().padStart(2, '0')}:00`;
 
-          void addSchedule({
-            startTime: startTimeStr,
-            endTime: endTimeStr,
-            placeName: null,
-            placeLat: null,
-            placeLng: null,
-            content: null,
-          }).catch((error) => alert(getRequestErrorMessage(error)));
+          onAddSlot(startTimeStr, endTimeStr);
         }
 
         setDragToCreate(null);
@@ -265,7 +257,7 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
     schedules,
     cx,
     cy,
-    addSchedule,
+    onAddSlot,
     updateSchedule,
     activeSchedules,
     getFreeInterval,
