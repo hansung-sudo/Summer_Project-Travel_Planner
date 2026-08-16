@@ -110,7 +110,7 @@ export const KakaoMap: React.FC = () => {
       const pos = new kakao.maps.LatLng(s.placeLat, s.placeLng);
       path.push(pos);
       // 상세 일정표와 동일한 색의 위치 핀
-      const color = getScheduleColor(s.id);
+      const color = getScheduleColor(s.id, activeSchedules);
       const content = document.createElement('div');
       content.title = s.placeName || '';
       content.style.cssText = 'line-height:0; filter: drop-shadow(0 2px 2px rgba(15,23,42,0.55));';
@@ -257,7 +257,7 @@ export const KakaoMap: React.FC = () => {
                 <svg width="20" height="27" viewBox="0 0 24 32" overflow="visible" style={{ flexShrink: 0, overflow: 'visible' }}>
                   <path
                     d="M12 0 C5.373 0 0 5.373 0 12 c0 8.4 12 20 12 20 s12 -11.6 12 -20 C24 5.373 18.627 0 12 0 Z"
-                    fill={getScheduleColor(s.id)}
+                    fill={getScheduleColor(s.id, activeSchedules)}
                     stroke="#0f172a"
                     strokeWidth="3"
                   />

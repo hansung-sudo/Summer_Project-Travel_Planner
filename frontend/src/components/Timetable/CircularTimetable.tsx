@@ -1,7 +1,7 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react';
 import { usePlannerStore } from '../../store/plannerStore';
 import type { Schedule, Participant } from '../../types';
-import { Eye } from 'lucide-react';
+import { Eye, Edit3, Trash2 } from 'lucide-react';
 import { getScheduleColor } from '../../utils/colorUtils';
 import { getRequestErrorMessage } from '../../api/client';
 
@@ -17,14 +17,15 @@ const timeToDecimal = (time: string): number => {
 };
 
 export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot, onEditSlot, size = 380 }) => {
-  const { 
-    schedules, 
-    activeDayId, 
-    showGridLines, 
-    participants, 
+  const {
+    schedules,
+    activeDayId,
+    showGridLines,
+    participants,
     currentUser,
     updateSchedule,
-    addSchedule
+    addSchedule,
+    deleteSchedule
   } = usePlannerStore();
 
   // SVG parameters (지름 size에 비례해 스케일)
@@ -109,6 +110,12 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
     dragPreview?.id === schedule.id ? dragPreview : schedule
   );
 
+  const [selectedScheduleMenu, setSelectedScheduleMenu] = useState<{
+    schedule: Schedule;
+    x: number;
+    y: number;
+  } | null>(null);
+
   useEffect(() => {
     if (!activeDrag && !dragToCreate) return;
 
@@ -117,13 +124,13 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
       const rect = svgRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left - cx;
       const y = e.clientY - rect.top - cy;
-      
+
       let angle = (Math.atan2(y, x) * 180) / Math.PI;
       if (angle < 0) angle += 360;
-      
+
       const alignedAngle = (angle + 90) % 360;
       let decimalHour = alignedAngle / 15;
-      
+
       // Round to nearest 1 hour
       decimalHour = Math.round(decimalHour);
       if (decimalHour >= 24) decimalHour -= 24;
@@ -135,6 +142,7 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
         if (!schedule) return;
 
         const { minAllowed, maxAllowed } = getResizingInterval(activeDrag.scheduleId);
+        let rawHour = decimalHour;
 
         if (activeDrag.type === 'start') {
           let endDec = timeToDecimal(schedule.endTime);
@@ -150,6 +158,9 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
             startTime: timeStr,
           });
         } else {
+          if (rawHour === 0 && timeToDecimal(schedule.startTime) >= 12) {
+            rawHour = 24;
+          }
           const startDec = timeToDecimal(schedule.startTime);
           const adjustedHour = decimalHour <= startDec ? decimalHour + 24 : decimalHour;
           // Clamp end between startDec + 1 and maxAllowed
@@ -164,10 +175,12 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
         }
       } else if (dragToCreate) {
         const { minAllowed, maxAllowed } = getFreeInterval(dragToCreate.startHour);
-        // Handle wrap around: if start is late (e.g. 23) and we drag near top, treat 0/1 as 24/25
-        const adjustedHour = decimalHour < dragToCreate.startHour ? decimalHour + 24 : decimalHour;
-        const clampedHour = Math.max(minAllowed, Math.min(maxAllowed, adjustedHour));
-        
+        let rawHour = decimalHour;
+        if (decimalHour === 0 && dragToCreate.startHour >= 12) {
+          rawHour = 24;
+        }
+        const clampedHour = Math.max(minAllowed, Math.min(maxAllowed, rawHour));
+
         setDragToCreate(prev => {
           if (!prev) return null;
           return {
@@ -213,7 +226,7 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
           const sStart = timeToDecimal(s.startTime);
           let sEnd = timeToDecimal(s.endTime);
           if (sEnd < sStart) sEnd = 24; // Treat 00:00 as 24:00
-          
+
           return start < sEnd && sStart < end;
         });
 
@@ -279,7 +292,7 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
     const end = endHour < startHour ? 24 : endHour;
     const startAngle = hourToAngle(startHour);
     const endAngle = hourToAngle(end);
-    
+
     const largeArcFlag = end - startHour > 12 ? 1 : 0;
 
     const outerStart = polarToCartesian(cx, cy, rOuter, startAngle);
@@ -304,6 +317,9 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
     if (!svgRef.current) return;
     e.preventDefault();
 
+    // Close selection if open
+    setSelectedScheduleMenu(null);
+
     // Get click coordinates relative to SVG
     const rect = svgRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left - cx;
@@ -315,14 +331,14 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
 
     // Align angle so 0 deg is at the top (subtracting -90 deg rotation)
     const alignedAngle = (angle + 90) % 360;
-    
+
     // Snap to nearest 1 hour on click (first/second half hour logic)
     let clickedHour = alignedAngle / 15;
     clickedHour = Math.round(clickedHour);
     if (clickedHour >= 24) clickedHour -= 24;
 
     // Check if clicked on an existing schedule arc
-    const dist = Math.sqrt(x*x + y*y);
+    const dist = Math.sqrt(x * x + y * y);
 
     // If clicked the center area ("클릭하여 일정 추가" label)
     if (dist < rInner - 10) {
@@ -330,20 +346,51 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
       return;
     }
 
-    if (dist >= rInner - 10 && dist <= rOuter + 10) {
-      // Find if we clicked exactly on an existing schedule
+    if (dist >= rInner - 15 && dist <= rOuter + 20) {
+      const currentDecimal = (alignedAngle / 15);
+
+      // Check if click is near start or end joint line of any active schedule
+      for (const s of activeSchedules) {
+        const startDec = timeToDecimal(s.startTime);
+        let endDec = timeToDecimal(s.endTime);
+        if (endDec === 0 || endDec < startDec) endDec = 24;
+
+        const diffStart = Math.min(Math.abs(currentDecimal - startDec), 24 - Math.abs(currentDecimal - startDec));
+        const diffEnd = Math.min(Math.abs(currentDecimal - endDec), 24 - Math.abs(currentDecimal - endDec));
+
+        if (diffStart <= 0.35) {
+          setActiveDrag({ scheduleId: s.id, type: 'start' });
+          return;
+        }
+        if (diffEnd <= 0.35) {
+          setActiveDrag({ scheduleId: s.id, type: 'end' });
+          return;
+        }
+      }
+
+      // Find if we clicked inside an existing schedule body
       const clickedSched = activeSchedules.find(s => {
         const start = timeToDecimal(s.startTime);
-        const end = timeToDecimal(s.endTime);
+        let end = timeToDecimal(s.endTime);
+        if (end === 0 || end < start) end = 24;
         const currentDecimal = (alignedAngle / 15);
-        if (end < start) { // overnight
-          return currentDecimal >= start || currentDecimal < end;
-        }
         return currentDecimal >= start && currentDecimal < end;
       });
 
       if (clickedSched) {
-        onEditSlot(clickedSched);
+        const startDec = timeToDecimal(clickedSched.startTime);
+        let endDec = timeToDecimal(clickedSched.endTime);
+        if (endDec === 0 || endDec < startDec) endDec = 24;
+        const midDec = (startDec + endDec) / 2;
+        const midAngleDeg = hourToAngle(midDec);
+        const popupRadius = rOuter + 55;
+        const pos = polarToCartesian(cx, cy, popupRadius, midAngleDeg);
+
+        setSelectedScheduleMenu({
+          schedule: clickedSched,
+          x: pos.x,
+          y: pos.y,
+        });
         return;
       }
 
@@ -403,25 +450,25 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
           {/* Inner space click zone / info & Double faint circular borders */}
           <circle cx={cx} cy={cy} r={rInner} fill="rgba(15, 23, 42, 0.03)" stroke="rgba(15, 23, 42, 0.08)" strokeWidth={1} />
           <circle cx={cx} cy={cy} r={rOuter} fill="none" stroke="rgba(15, 23, 42, 0.08)" strokeWidth={1} />
-          
-          <text 
-            x={cx} 
-            y={cy - 10} 
-            textAnchor="middle" 
+
+          <text
+            x={cx}
+            y={cy - 10}
+            textAnchor="middle"
             style={centerTitleStyle}
           >
             24H WHEEL
           </text>
-          
-          <text 
-            x={cx} 
-            y={cy + 15} 
-            textAnchor="middle" 
+
+          <text
+            x={cx}
+            y={cy + 15}
+            textAnchor="middle"
             style={centerSubtitleStyle}
           >
             {currentUser ? '클릭하여 일정 추가' : '로그인 후 추가 가능'}
           </text>
- 
+
           {/* Hour labels (00, 03, 06, 09, 12, 15, 18, 21) */}
           {[0, 3, 6, 9, 12, 15, 18, 21].map((hour) => {
             const angle = hourToAngle(hour);
@@ -438,7 +485,7 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
               </text>
             );
           })}
- 
+
           {/* All 24 hour grid lines */}
           {showGridLines && Array.from({ length: 24 }).map((_, hour) => {
             const angle = hourToAngle(hour);
@@ -475,20 +522,27 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
 
           {/* Render schedule arcs */}
           {activeSchedules.map((schedule) => {
-            const slotColor = getScheduleColor(schedule.id);
+            const slotColor = getScheduleColor(schedule.id, activeSchedules);
             const isHovered = hoveredSchedule?.id === schedule.id;
             const isDraggingThis = activeDrag?.scheduleId === schedule.id;
 
-            const startAngle = hourToAngle(timeToDecimal(schedule.startTime));
-            const endAngle = hourToAngle(timeToDecimal(schedule.endTime));
+            const startDec = timeToDecimal(schedule.startTime);
+            let endDec = timeToDecimal(schedule.endTime);
+            if (endDec === 0 || endDec < startDec) endDec = 24;
 
-            const startHandlePos = polarToCartesian(cx, cy, rOuter, startAngle);
-            const endHandlePos = polarToCartesian(cx, cy, rOuter, endAngle);
+            const startAngle = hourToAngle(startDec);
+            const endAngle = hourToAngle(endDec);
+
+            const startInner = polarToCartesian(cx, cy, rInner, startAngle);
+            const startOuter = polarToCartesian(cx, cy, rOuter, startAngle);
+
+            const endInner = polarToCartesian(cx, cy, rInner, endAngle);
+            const endOuter = polarToCartesian(cx, cy, rOuter, endAngle);
 
             return (
               <g key={schedule.id}>
                 <path
-                  d={getDonutPath(timeToDecimal(schedule.startTime), timeToDecimal(schedule.endTime))}
+                  d={getDonutPath(startDec, endDec)}
                   fill={slotColor}
                   fillOpacity={isHovered || isDraggingThis ? 1.0 : 0.8}
                   stroke="#0f172a"
@@ -499,42 +553,94 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
                   onMouseLeave={() => setHoveredSchedule(null)}
                 />
 
-                {/* Drag handles shown only when hovered or actively dragging */}
+                {/* Boundary / Joint lines drag handles shown on hover */}
                 {currentUser && (isHovered || isDraggingThis) && (
-                  <>
-                    {/* Start handle */}
-                    <circle
-                      cx={startHandlePos.x}
-                      cy={startHandlePos.y}
-                      r={7}
-                      fill="#cbd5e1"
-                      stroke="#0f172a"
-                      strokeWidth={2.5}
-                      style={{ cursor: 'pointer' }}
+                  <g
+                    onMouseEnter={(e) => handleMouseEnterSlot(e, schedule)}
+                    onMouseLeave={() => setHoveredSchedule(null)}
+                  >
+                    {/* Start Joint Line Handle (시작 경계선 연결부) */}
+                    <g
+                      style={{ cursor: 'ew-resize' }}
                       onMouseDown={(e) => {
                         e.stopPropagation();
                         e.preventDefault();
                         setDragPreview(schedule);
                         setActiveDrag({ scheduleId: schedule.id, type: 'start' });
                       }}
-                    />
-                    {/* End handle */}
-                    <circle
-                      cx={endHandlePos.x}
-                      cy={endHandlePos.y}
-                      r={7}
-                      fill="#ffffff"
-                      stroke="#0f172a"
-                      strokeWidth={2.5}
-                      style={{ cursor: 'pointer' }}
+                    >
+                      {/* Thick transparent hit target line */}
+                      <line
+                        x1={startInner.x}
+                        y1={startInner.y}
+                        x2={startOuter.x}
+                        y2={startOuter.y}
+                        stroke="transparent"
+                        strokeWidth={16}
+                        strokeLinecap="round"
+                      />
+                      {/* Highlighted joint line */}
+                      <line
+                        x1={startInner.x}
+                        y1={startInner.y}
+                        x2={startOuter.x}
+                        y2={startOuter.y}
+                        stroke="#0f172a"
+                        strokeWidth={4}
+                        strokeLinecap="round"
+                      />
+                      <line
+                        x1={startInner.x}
+                        y1={startInner.y}
+                        x2={startOuter.x}
+                        y2={startOuter.y}
+                        stroke="#38bdf8"
+                        strokeWidth={2}
+                        strokeLinecap="round"
+                      />
+                    </g>
+
+                    {/* End Joint Line Handle (종료 경계선 연결부) */}
+                    <g
+                      style={{ cursor: 'ew-resize' }}
                       onMouseDown={(e) => {
                         e.stopPropagation();
                         e.preventDefault();
                         setDragPreview(schedule);
                         setActiveDrag({ scheduleId: schedule.id, type: 'end' });
                       }}
-                    />
-                  </>
+                    >
+                      {/* Thick transparent hit target line */}
+                      <line
+                        x1={endInner.x}
+                        y1={endInner.y}
+                        x2={endOuter.x}
+                        y2={endOuter.y}
+                        stroke="transparent"
+                        strokeWidth={16}
+                        strokeLinecap="round"
+                      />
+                      {/* Highlighted joint line */}
+                      <line
+                        x1={endInner.x}
+                        y1={endInner.y}
+                        x2={endOuter.x}
+                        y2={endOuter.y}
+                        stroke="#0f172a"
+                        strokeWidth={4}
+                        strokeLinecap="round"
+                      />
+                      <line
+                        x1={endInner.x}
+                        y1={endInner.y}
+                        x2={endOuter.x}
+                        y2={endOuter.y}
+                        stroke="#f43f5e"
+                        strokeWidth={2}
+                        strokeLinecap="round"
+                      />
+                    </g>
+                  </g>
                 )}
               </g>
             );
@@ -542,7 +648,7 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
         </svg>
 
         {/* Hover Tooltip */}
-        {hoveredSchedule && (
+        {hoveredSchedule && !selectedScheduleMenu && (
           <div
             style={{
               ...tooltipStyle,
@@ -551,9 +657,9 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
             }}
           >
             <div style={tooltipHeaderStyle}>
-              <span style={{ 
-                ...tooltipDotStyle, 
-                backgroundColor: getScheduleColor(hoveredSchedule.id) 
+              <span style={{
+                ...tooltipDotStyle,
+                backgroundColor: getScheduleColor(hoveredSchedule.id, activeSchedules)
               }} />
               <strong style={tooltipTimeStyle}>
                 {hoveredSchedule.startTime} - {hoveredSchedule.endTime}
@@ -565,6 +671,73 @@ export const CircularTimetable: React.FC<CircularTimetableProps> = ({ onAddSlot,
             )}
             <div style={tooltipCreatorStyle}>
               작성자: {getCreator(hoveredSchedule.createdBy)?.name || '알수없음'}
+            </div>
+          </div>
+        )}
+
+        {/* Selected Schedule Action Popover (시간표 휠 외곽 둘레에 배치) */}
+        {selectedScheduleMenu && (
+          <div
+            style={{
+              position: 'absolute',
+              left: `${selectedScheduleMenu.x}px`,
+              top: `${selectedScheduleMenu.y}px`,
+              transform: 'translate(-50%, -50%)',
+              backgroundColor: '#ffffff',
+              border: '3px solid #0f172a',
+              borderRadius: '12px',
+              padding: '10px 12px',
+              zIndex: 1000,
+              boxShadow: '6px 6px 0px #0f172a',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+              minWidth: '180px',
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '2px solid #e2e8f0', paddingBottom: '4px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: getScheduleColor(selectedScheduleMenu.schedule.id, activeSchedules) }} />
+                <strong style={{ fontSize: '0.825rem', color: '#0f172a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '120px' }}>
+                  {selectedScheduleMenu.schedule.placeName || '(장소 미정)'}
+                </strong>
+              </div>
+              <button
+                onClick={() => setSelectedScheduleMenu(null)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: '0.8rem', padding: '0 2px', fontWeight: 700 }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ fontSize: '0.725rem', color: '#64748b', fontFamily: 'monospace' }}>
+              시간: {selectedScheduleMenu.schedule.startTime} - {selectedScheduleMenu.schedule.endTime}
+            </div>
+
+            <div style={{ display: 'flex', gap: '6px', marginTop: '2px' }}>
+              <button
+                onClick={() => {
+                  const sched = selectedScheduleMenu.schedule;
+                  setSelectedScheduleMenu(null);
+                  onEditSlot(sched);
+                }}
+                style={editBtnStyle}
+              >
+                <Edit3 size={12} />
+                수정하기
+              </button>
+
+              <button
+                onClick={() => {
+                  deleteSchedule(selectedScheduleMenu.schedule.id);
+                  setSelectedScheduleMenu(null);
+                }}
+                style={deleteBtnStyle}
+              >
+                <Trash2 size={12} />
+                삭제하기
+              </button>
             </div>
           </div>
         )}
@@ -699,4 +872,34 @@ const tooltipMemoStyle: React.CSSProperties = {
 const tooltipCreatorStyle: React.CSSProperties = {
   color: '#64748b',
   fontSize: '0.7rem',
+};
+
+const editBtnStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '4px',
+  padding: '6px 10px',
+  fontSize: '0.75rem',
+  fontWeight: 700,
+  color: '#0f172a',
+  backgroundColor: '#ffffff',
+  border: '2px solid #0f172a',
+  borderRadius: '6px',
+  boxShadow: '2px 2px 0px #0f172a',
+  cursor: 'pointer',
+};
+
+const deleteBtnStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: '4px',
+  padding: '6px 10px',
+  fontSize: '0.75rem',
+  fontWeight: 700,
+  color: '#ffffff',
+  backgroundColor: '#ef4444',
+  border: '2px solid #0f172a',
+  borderRadius: '6px',
+  boxShadow: '2px 2px 0px #0f172a',
+  cursor: 'pointer',
 };

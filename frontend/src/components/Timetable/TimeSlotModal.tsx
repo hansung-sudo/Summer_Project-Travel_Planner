@@ -34,8 +34,6 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
 }) => {
   const { addSchedule, updateSchedule, deleteSchedule } = usePlannerStore();
   
-  const [startTime, setStartTime] = useState('09:00');
-  
   const [startHour, setStartHour] = useState('09');
   const [startMin, setStartMin] = useState('00');
   const [endHour, setEndHour] = useState('11');
@@ -121,8 +119,6 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
     setStartMin(sm);
     setEndHour(eh);
     setEndMin(em);
-
-    setStartTime(`${sh}:${sm}`);
     
     if (schedule) {
       setPlaceName(schedule.placeName || '');
@@ -156,15 +152,19 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const finalEndTime = endHour === '24' ? '00:00' : `${endHour}:${endMin}`;
+    const startTotalMinutes = Number(startHour) * 60 + Number(startMin);
+    const endTotalMinutes = Number(endHour) * 60 + Number(endMin);
 
-    if (startTime === finalEndTime) {
-      alert('시작 시간과 종료 시간은 달라야 합니다.');
+    if (endTotalMinutes <= startTotalMinutes) {
+      alert('종료 시간은 시작 시간보다 늦어야 합니다.');
       return;
     }
 
+    const finalStartTime = `${startHour}:${startMin}`;
+    const finalEndTime = endHour === '24' ? '00:00' : `${endHour}:${endMin}`;
+
     const data: CreateScheduleInput = {
-      startTime,
+      startTime: finalStartTime,
       endTime: finalEndTime,
       placeName: placeName.trim() || null,
       placeLat,
@@ -224,7 +224,6 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
                   value={startHour}
                   onChange={(e) => {
                     setStartHour(e.target.value);
-                    setStartTime(`${e.target.value}:${startMin}`);
                   }}
                 >
                   {HOURS.map(h => (
@@ -237,7 +236,6 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
                   value={startMin}
                   onChange={(e) => {
                     setStartMin(e.target.value);
-                    setStartTime(`${startHour}:${e.target.value}`);
                   }}
                 >
                   {MINUTES.map(m => (
