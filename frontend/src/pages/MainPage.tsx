@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { usePlannerStore } from '../store/plannerStore';
 import { ArrowRight, HelpCircle } from 'lucide-react';
+import { getRequestErrorMessage } from '../api/client';
 
 interface MainPageProps {
   onNavigateToPlanner: (shareCode: string) => void;
@@ -10,9 +11,10 @@ export const MainPage: React.FC<MainPageProps> = ({ onNavigateToPlanner }) => {
   const { createPlanner } = usePlannerStore();
   const [title, setTitle] = useState('');
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isBtnHovered, setIsBtnHovered] = useState(false);
 
-  const handleCreate = (e: React.FormEvent) => {
+  const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -21,11 +23,14 @@ export const MainPage: React.FC<MainPageProps> = ({ onNavigateToPlanner }) => {
       return;
     }
 
+    setIsSubmitting(true);
     try {
-      const shareCode = createPlanner(title.trim());
+      const shareCode = await createPlanner(title.trim());
       onNavigateToPlanner(shareCode);
     } catch (err) {
-      setError('플래너 생성 중 오류가 발생했습니다.');
+      setError(getRequestErrorMessage(err));
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -64,8 +69,9 @@ export const MainPage: React.FC<MainPageProps> = ({ onNavigateToPlanner }) => {
               }}
               onMouseEnter={() => setIsBtnHovered(true)}
               onMouseLeave={() => setIsBtnHovered(false)}
+              disabled={isSubmitting}
             >
-              create
+              {isSubmitting ? 'creating...' : 'create'}
               <ArrowRight size={16} />
             </button>
           </div>

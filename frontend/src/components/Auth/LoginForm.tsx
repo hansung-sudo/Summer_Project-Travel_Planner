@@ -1,23 +1,24 @@
 import React, { useState } from 'react';
 import { usePlannerStore } from '../../store/plannerStore';
 import { LogIn, Eye } from 'lucide-react';
+import { getRequestErrorMessage } from '../../api/client';
 
 interface LoginFormProps {
   onClose?: () => void;
+  allowViewMode?: boolean;
 }
 
-export const LoginForm: React.FC<LoginFormProps> = ({ onClose }) => {
-  const { joinPlanner, participants } = usePlannerStore();
+export const LoginForm: React.FC<LoginFormProps> = ({ onClose, allowViewMode = true }) => {
+  const { joinPlanner } = usePlannerStore();
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   const [isPrimaryHovered, setIsPrimaryHovered] = useState(false);
   const [isSecondaryHovered, setIsSecondaryHovered] = useState(false);
 
-  const isFirstParticipant = participants.length === 0;
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -25,13 +26,19 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onClose }) => {
       setError('이름을 입력해 주세요.');
       return;
     }
+    if (password.length < 4) {
+      setError('비밀번호는 4자 이상 입력해 주세요.');
+      return;
+    }
 
+    setIsSubmitting(true);
     try {
-      // First joining user automatically gets 'owner' role
-      joinPlanner(name.trim(), isFirstParticipant ? 'owner' : 'member');
+      await joinPlanner(name.trim(), password);
       if (onClose) onClose();
     } catch (err) {
-      setError('로그인에 실패했습니다.');
+      setError(getRequestErrorMessage(err));
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -71,7 +78,9 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onClose }) => {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="추후 재접속 인증용"
+              minLength={4}
               maxLength={20}
+              required
             />
           </div>
 
@@ -85,12 +94,13 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onClose }) => {
               }}
               onMouseEnter={() => setIsPrimaryHovered(true)}
               onMouseLeave={() => setIsPrimaryHovered(false)}
+              disabled={isSubmitting}
             >
               <LogIn size={16} />
-              참여하기
+              {isSubmitting ? '처리 중...' : '참여하기'}
             </button>
 
-            {onClose && (
+            {onClose && allowViewMode && (
               <button 
                 type="button" 
                 onClick={onClose}
@@ -101,6 +111,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onClose }) => {
                 }}
                 onMouseEnter={() => setIsSecondaryHovered(true)}
                 onMouseLeave={() => setIsSecondaryHovered(false)}
+                disabled={isSubmitting}
               >
                 <Eye size={16} />
                 조회모드로 둘러보기
