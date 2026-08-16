@@ -188,7 +188,7 @@ export const TimeSlotModal: React.FC<TimeSlotModalProps> = ({
   };
 
   const handleDelete = async () => {
-    if (schedule && window.confirm('이 일정을 삭제하시겠습니까?')) {
+    if (schedule) {
       setIsSubmitting(true);
       try {
         await deleteSchedule(schedule.id);

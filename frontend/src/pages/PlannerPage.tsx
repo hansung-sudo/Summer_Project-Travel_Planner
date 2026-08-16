@@ -51,10 +51,31 @@ export const PlannerPage: React.FC<PlannerPageProps> = ({ shareCode, onGoBack })
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<{ name: string; lat: number; lng: number }>).detail;
       if (slotModalOpenRef.current) return; // 이미 모달이 열려 있으면 모달이 자체적으로 반영
-      if (!usePlannerStore.getState().currentUser) return;
+      const state = usePlannerStore.getState();
+      if (!state.currentUser) return;
+
+      // 현재 선택된 일차의 기존 일정들을 확인하여 다음 빈 시간대 자동 추천 (기본 9~11시 중복 적재 방지)
+      const daySchedules = state.schedules.filter((s) => s.dayId === state.activeDayId);
+      let nextStartHour = 9;
+      if (daySchedules.length > 0) {
+        let maxEndDecimal = 9;
+        daySchedules.forEach((s) => {
+          const [h, m] = s.endTime.split(':').map(Number);
+          let endDec = h + (m || 0) / 60;
+          if (endDec === 0) endDec = 24; // 00:00은 자정(24시)
+          if (endDec > maxEndDecimal && endDec < 24) {
+            maxEndDecimal = endDec;
+          }
+        });
+        nextStartHour = Math.min(22, Math.ceil(maxEndDecimal));
+      }
+      const nextEndHour = Math.min(24, nextStartHour + 2);
+      const nextStartStr = `${nextStartHour.toString().padStart(2, '0')}:00`;
+      const nextEndStr = nextEndHour === 24 ? '00:00' : `${nextEndHour.toString().padStart(2, '0')}:00`;
+
       setEditingSchedule(null);
-      setDefaultStartTime(null);
-      setDefaultEndTime(null);
+      setDefaultStartTime(nextStartStr);
+      setDefaultEndTime(nextEndStr);
       setPendingPlace(detail);
       setShowSlotModal(true);
     };
